@@ -1,0 +1,26 @@
+# Cursor-regler för detta repo
+
+## Utvecklingsregler
+- Använd alltid TypeScript strict mode
+- Auto-save vid varje ändring
+- Testa i StackBlitz före commit
+- Ingen extern UI-ram eller komponentbibliotek
+- Endast inline-styles i TSX (ingen CSS-modul, ingen Tailwind)
+- Små, rena commits med tydliga PR-beskrivningar
+- Följ filstrukturen i detta repo (Vite + React + TS)
+
+## Tekniska krav
+- ISO 8601 helpers måste bevaras: getCurrentWeek(), getCurrentMonth()
+- LocalStorage med try/catch och fallback till in-memory store (får ej tas bort)
+- UI-texter ska vara på svenska
+- Minsta bredd 280px ska fungera
+- KPI-färger: röd #ff3b30, orange #ff9500, blå #007aff
+- Vid refaktor: behåll typerna DocStatus, Staff, Client, Plan, WeeklyDoc, MonthlyReport, VismaWeek
+
+## Praktiska checks
+- Inline-styles: Inga .css för UI (behåll bara reset/layout i index.css om du vill)
+- Svenska texter: komponenter, knappar, aria-labels på svenska
+- ISO-hjälpare: rör inte getCurrentWeek() / getCurrentMonth()
+- LocalStorage: alltid try/catch + fallback till in-memory (redan implementerat)
+- KPI-färger: använd exakt #ff3b30, #ff9500, #007aff
+- Min-bredd: håll layouten responsiv, minWidth: 280

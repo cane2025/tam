@@ -1,0 +1,750 @@
+{
+  "client": "Thunder Client",
+  "collectionName": "Ungdomsstöd V2 API Tests",
+  "dateExported": "2024-01-15T10:00:00.000Z",
+  "version": "1.1",
+  "folders": [
+    {
+      "id": "auth",
+      "name": "Authentication",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "clients",
+      "name": "Clients",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "care-plans",
+      "name": "Care Plans",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "weekly-docs",
+      "name": "Weekly Documentation",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "monthly-reports",
+      "name": "Monthly Reports",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "visma-time",
+      "name": "Visma Time",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "dashboard",
+      "name": "Dashboard & KPIs",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    },
+    {
+      "id": "idempotency",
+      "name": "Idempotency Tests",
+      "containerId": "",
+      "created": "2024-01-15T10:00:00.000Z"
+    }
+  ],
+  "requests": [
+    {
+      "id": "health-check",
+      "name": "Health Check",
+      "url": "http://localhost:3001/api/health",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "data.status",
+          "expected": "healthy"
+        },
+        {
+          "type": "json-query",
+          "value": "data.timezone",
+          "expected": "Europe/Stockholm"
+        }
+      ]
+    },
+    {
+      "id": "register-user",
+      "name": "Register User",
+      "url": "http://localhost:3001/api/auth/register",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "auth",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"test@example.com\",\n  \"name\": \"Test User\",\n  \"password\": \"password123\",\n  \"role\": \"staff\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "name": "Login",
+      "url": "http://localhost:3001/api/auth/login",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "auth",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        },
+        {
+          "type": "json-query",
+          "value": "data.token",
+          "expected": "{{$regexp:^[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+$}}"
+        }
+      ],
+      "vars": [
+        {
+          "name": "authToken",
+          "value": "{{json(data.token)}}"
+        }
+      ]
+    },
+    {
+      "id": "verify-token",
+      "name": "Verify Token",
+      "url": "http://localhost:3001/api/auth/verify",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "auth",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "create-client",
+      "name": "Create Client",
+      "url": "http://localhost:3001/api/clients",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "clients",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"initials\": \"TC\",\n  \"name\": \"Test Client\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ],
+      "vars": [
+        {
+          "name": "clientId",
+          "value": "{{json(data.id)}}"
+        }
+      ]
+    },
+    {
+      "id": "get-clients",
+      "name": "Get Clients",
+      "url": "http://localhost:3001/api/clients",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "clients",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        }
+      ],
+      "params": [
+        {
+          "name": "page",
+          "value": "1"
+        },
+        {
+          "name": "limit",
+          "value": "10"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "get-client-by-id",
+      "name": "Get Client by ID",
+      "url": "http://localhost:3001/api/clients/{{clientId}}",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "clients",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "update-client",
+      "name": "Update Client",
+      "url": "http://localhost:3001/api/clients/{{clientId}}",
+      "method": "PUT",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "clients",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"initials\": \"TCU\",\n  \"name\": \"Test Client Updated\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "create-care-plan",
+      "name": "Create Care Plan",
+      "url": "http://localhost:3001/api/care-plans",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "care-plans",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"care_plan_date\": \"2024-01-15\",\n  \"has_gfp\": true,\n  \"staff_notified\": true,\n  \"notes\": \"Initial care plan created during testing\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ],
+      "vars": [
+        {
+          "name": "carePlanId",
+          "value": "{{json(data.id)}}"
+        }
+      ]
+    },
+    {
+      "id": "create-weekly-doc",
+      "name": "Create Weekly Documentation",
+      "url": "http://localhost:3001/api/weekly-docs",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "weekly-docs",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"week_id\": \"2024-W03\",\n  \"monday\": true,\n  \"tuesday\": true,\n  \"wednesday\": false,\n  \"thursday\": true,\n  \"friday\": true,\n  \"saturday\": false,\n  \"sunday\": false,\n  \"status\": \"approved\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "create-monthly-report",
+      "name": "Create Monthly Report",
+      "url": "http://localhost:3001/api/monthly-reports",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "monthly-reports",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"month_id\": \"2024-01\",\n  \"sent\": true,\n  \"status\": \"approved\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "create-visma-time",
+      "name": "Create Visma Time Entry",
+      "url": "http://localhost:3001/api/visma-time",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "visma-time",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{$uuid}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"week_id\": \"2024-W03\",\n  \"monday\": true,\n  \"tuesday\": true,\n  \"wednesday\": false,\n  \"thursday\": true,\n  \"friday\": true,\n  \"status\": \"approved\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "get-dashboard-kpis",
+      "name": "Get Dashboard KPIs",
+      "url": "http://localhost:3001/api/dashboard/kpis",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "dashboard",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "test-idempotency-same-key",
+      "name": "Test Idempotency - Same Key",
+      "url": "http://localhost:3001/api/clients",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "idempotency",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "test-idempotency-key-123"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"initials\": \"ID\",\n  \"name\": \"Idempotency Test Client\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "test-idempotency-same-key-repeat",
+      "name": "Test Idempotency - Same Key (Repeat)",
+      "url": "http://localhost:3001/api/clients",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "idempotency",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "test-idempotency-key-123"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"initials\": \"ID\",\n  \"name\": \"Idempotency Test Client\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        },
+        {
+          "type": "json-query",
+          "value": "data.initials",
+          "expected": "ID"
+        }
+      ]
+    },
+    {
+      "id": "dev-token-test",
+      "name": "Dev Token Test",
+      "url": "http://localhost:3001/api/dashboard/kpis",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "auth",
+      "headers": [
+        {
+          "name": "X-Dev-Token",
+          "value": "dev-token-for-testing"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    },
+    {
+      "id": "delete-client",
+      "name": "Delete Client",
+      "url": "http://localhost:3001/api/clients/{{clientId}}",
+      "method": "DELETE",
+      "sortNum": 10000,
+      "created": "2024-01-15T10:00:00.000Z",
+      "modified": "2024-01-15T10:00:00.000Z",
+      "containerId": "clients",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{authToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "status",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "value": "success",
+          "expected": "true"
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "id": "local",
+      "name": "Local Development",
+      "data": [
+        {
+          "name": "baseUrl",
+          "value": "http://localhost:3001"
+        },
+        {
+          "name": "clientUrl",
+          "value": "http://localhost:5175"
+        }
+      ]
+    },
+    {
+      "id": "production",
+      "name": "Production",
+      "data": [
+        {
+          "name": "baseUrl",
+          "value": "https://api.ungdomsstod.se"
+        },
+        {
+          "name": "clientUrl",
+          "value": "https://ungdomsstod.se"
+        }
+      ]
+    }
+  ]
+}
+
