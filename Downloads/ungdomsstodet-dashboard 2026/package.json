@@ -18,7 +18,8 @@
     "test:timezone": "vitest run tests/timezone.test.ts",
     "test:idempotency": "vitest run tests/idempotency.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "migrate:v1-to-v2": "tsx scripts/v1-to-v2-migration.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.2",

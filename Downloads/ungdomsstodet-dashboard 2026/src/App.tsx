@@ -1,9 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
-import { AppState, DocStatus, WeekId, MonthId, Staff, Client, Plan, WeeklyDoc, MonthlyReport, VismaWeek, View } from "./types";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { AppState, DocStatus, WeekId, MonthId, Staff, Client, Plan, GFPPlan, WeeklyDoc, MonthlyReport, VismaWeek, View, HistoryEntry } from "./types";
 import { getStoredData, getBackups, getStorageType } from "./storage";
 import { getCurrentWeek, getCurrentMonth, addWeeks, addMonths, addDaysISO, todayYMD } from "./date";
 import SaveBar from "./components/SaveBar";
 import StaffSummary from "./components/StaffSummary";
+import GroupAttendanceWidget from "./components/GroupAttendanceWidget";
+
+// NEW: UI Tokens for consistent styling
+const UI_TOKENS = {
+  colors: {
+    primary: '#007aff',
+    orange: '#ff9500',
+    red: '#ff3b30',
+    green: '#16a34a',
+    textPrimary: '#111111',
+    textSecondary: '#374151',
+    border: 'rgba(0,0,0,0.12)',
+    sidebarActive: '#e9f2ff'
+  },
+  inputBase: {
+    padding: '8px 12px',
+    border: '1px solid rgba(0,0,0,0.12)',
+    borderRadius: '6px',
+    fontSize: '14px',
+    backgroundColor: '#ffffff',
+    color: '#111111'
+  },
+  selectBase: {
+    padding: '8px 12px',
+    border: '1px solid rgba(0,0,0,0.12)',
+    borderRadius: '6px',
+    fontSize: '14px',
+    backgroundColor: '#ffffff',
+    color: '#111111'
+  },
+  textareaBase: {
+    padding: '8px 12px',
+    border: '1px solid rgba(0,0,0,0.12)',
+    borderRadius: '6px',
+    fontSize: '14px',
+    backgroundColor: '#ffffff',
+    color: '#111111',
+    resize: 'vertical' as const
+  }
+};
 
 // NEW: Central status label mapping
 const STATUS_LABEL: Record<DocStatus, string> = {
@@ -11,6 +51,542 @@ const STATUS_LABEL: Record<DocStatus, string> = {
   pending: 'Väntar', 
   rejected: 'Ej godkänt/komplettera'
 };
+
+// NEW: Debounce helper for note saving
+function debounceNote(fn: (noteValue: string) => void, ms: number = 500): (noteValue: string) => void {
+  let timeoutId: number;
+  return (noteValue: string) => {
+    clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => fn(noteValue), ms);
+  };
+}
+
+// NEW: Period-based data persistence helpers with proper isolation
+const PERIOD_DATA_PREFIX = 'us:';
+
+function getPeriodKey(clientId: string, periodType: 'weekly' | 'monthly', periodId: string): string {
+  return `${PERIOD_DATA_PREFIX}${clientId}:${periodType}:${periodId}`;
+}
+
+function savePeriodData(clientId: string, periodType: 'weekly' | 'monthly', periodId: string, data: WeeklyDoc | MonthlyReport): void {
+  try {
+    const key = getPeriodKey(clientId, periodType, periodId);
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.warn(`Failed to save ${periodType} data for ${clientId}:${periodId}:`, error);
+  }
+}
+
+function loadPeriodData<T extends WeeklyDoc | MonthlyReport>(
+  clientId: string, 
+  periodType: 'weekly' | 'monthly', 
+  periodId: string, 
+  defaultData: T
+): T {
+  try {
+    const key = getPeriodKey(clientId, periodType, periodId);
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored) as T;
+      return { ...defaultData, ...parsed };
+    }
+  } catch (error) {
+    console.warn(`Failed to load ${periodType} data for ${clientId}:${periodId}:`, error);
+  }
+  return defaultData;
+}
+
+// NEW: Cleanup orphaned period data for clients that no longer exist (but preserve archived clients' history and us:history)
+function cleanupClientLocalStorage(allClientIds: Set<string>): void {
+  try {
+    const keysToRemove: string[] = [];
+    
+    // Scan all localStorage keys for period data
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(PERIOD_DATA_PREFIX)) {
+        // Parse key: us:clientId:periodType:periodId
+        const parts = key.split(':');
+        if (parts.length >= 2 && parts[1]) {
+          const clientId = parts[1];
+          // Only remove if client doesn't exist at all (including archived ones)
+          if (!allClientIds.has(clientId)) {
+            keysToRemove.push(key);
+          }
+        }
+      }
+    }
+    
+    // Remove orphaned keys (but NEVER touch us:history)
+    keysToRemove.forEach(key => {
+      if (key !== HISTORY_KEY) { // Extra safety check
+        localStorage.removeItem(key);
+      }
+    });
+    
+    if (keysToRemove.length > 0) {
+      console.log(`Cleaned up ${keysToRemove.length} orphaned period data entries (preserved history)`);
+    }
+  } catch (error) {
+    console.warn('Failed to cleanup orphaned period data:', error);
+  }
+}
+
+// NEW: Get all client IDs from state (including archived ones to preserve history)
+function getAllClientIds(state: AppState): Set<string> {
+  const clientIds = new Set<string>();
+  state.staff.forEach(staff => {
+    staff.clients.forEach(client => {
+      clientIds.add(client.id);
+    });
+  });
+  return clientIds;
+}
+
+// NEW: History management functions
+const HISTORY_KEY = 'us:history';
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    const stored = localStorage.getItem(HISTORY_KEY);
+    if (stored) {
+      return JSON.parse(stored) as HistoryEntry[];
+    }
+  } catch (error) {
+    console.warn('Failed to load history:', error);
+  }
+  return [];
+}
+
+function saveHistory(history: HistoryEntry[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (error) {
+    console.warn('Failed to save history:', error);
+  }
+}
+
+function upsertHistory(entry: Omit<HistoryEntry, 'id' | 'ts'>): void {
+  const history = loadHistory();
+  const now = new Date().toISOString();
+  
+  // Create unique key for idempotency (commented out as not used in current implementation)
+  // const key = `${entry.periodType}:${entry.periodId}:${entry.staffId}:${entry.clientId}:${entry.metric}`;
+  
+  // Find existing entry
+  const existingIndex = history.findIndex(h => 
+    h.periodType === entry.periodType &&
+    h.periodId === entry.periodId &&
+    h.staffId === entry.staffId &&
+    h.clientId === entry.clientId &&
+    h.metric === entry.metric
+  );
+  
+  const newEntry: HistoryEntry = {
+    id: existingIndex >= 0 ? history[existingIndex]!.id : crypto.randomUUID(),
+    ...entry,
+    ts: now
+  };
+  
+  if (existingIndex >= 0) {
+    // Update existing entry
+    history[existingIndex] = newEntry;
+  } else {
+    // Add new entry
+    history.push(newEntry);
+  }
+  
+  saveHistory(history);
+}
+
+// Helper functions for future use (currently not used but available for extensions)
+// function getHistoryForPeriod(periodType: 'week' | 'month', periodId: string): HistoryEntry[] {
+//   const history = loadHistory();
+//   return history.filter(h => h.periodType === periodType && h.periodId === periodId);
+// }
+
+// function getHistoryForClient(clientId: string): HistoryEntry[] {
+//   const history = loadHistory();
+//   return history.filter(h => h.clientId === clientId);
+// }
+
+// function getHistoryForStaff(staffId: string): HistoryEntry[] {
+//   const history = loadHistory();
+//   return history.filter(h => h.staffId === staffId);
+// }
+
+// NEW: Retention and export functions
+function retentionSweep(cutoffDays: number): { 
+  toRemove: Array<{ type: 'client' | 'plan' | 'weeklyDoc' | 'monthlyReport' | 'vismaWeek'; 
+                   id: string; 
+                   staffId: string; 
+                   clientId?: string; 
+                   data: Client | GFPPlan | WeeklyDoc | MonthlyReport | VismaWeek; 
+                   deletedAt: string }>;
+  cutoffDate: string;
+} {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
+  const cutoffISO = cutoffDate.toISOString();
+  
+  const toRemove: Array<{ type: 'client' | 'plan' | 'weeklyDoc' | 'monthlyReport' | 'vismaWeek'; 
+                         id: string; 
+                         staffId: string; 
+                         clientId?: string; 
+                         data: Client | GFPPlan | WeeklyDoc | MonthlyReport | VismaWeek; 
+                         deletedAt: string }> = [];
+  
+  // Scan all staff and clients for old archived/deleted items
+  const currentState = loadState();
+  const allStaff: Staff[] = currentState?.staff || [];
+  
+  allStaff.forEach((staff: Staff) => {
+    staff.clients.forEach((client: Client) => {
+      // Check client-level deletion/archiving
+      if (client.archivedAt && client.archivedAt < cutoffISO) {
+        toRemove.push({
+          type: 'client',
+          id: client.id,
+          staffId: staff.id,
+          clientId: client.id,
+          data: client,
+          deletedAt: client.archivedAt
+        });
+      } else if (client.deletedAt && client.deletedAt < cutoffISO) {
+        toRemove.push({
+          type: 'client',
+          id: client.id,
+          staffId: staff.id,
+          clientId: client.id,
+          data: client,
+          deletedAt: client.deletedAt
+        });
+      } else {
+        // Check individual items within active clients
+        // GFP Plans
+        client.plans.forEach((plan: GFPPlan) => {
+          if (plan.deletedAt && plan.deletedAt < cutoffISO) {
+            toRemove.push({
+              type: 'plan',
+              id: plan.id,
+              staffId: staff.id,
+              clientId: client.id,
+              data: plan,
+              deletedAt: plan.deletedAt
+            });
+          }
+        });
+        
+        // Weekly Docs
+        Object.values(client.weeklyDocs).forEach((doc: WeeklyDoc) => {
+          if (doc.deletedAt && doc.deletedAt < cutoffISO) {
+            toRemove.push({
+              type: 'weeklyDoc',
+              id: doc.weekId,
+              staffId: staff.id,
+              clientId: client.id,
+              data: doc,
+              deletedAt: doc.deletedAt
+            });
+          }
+        });
+        
+        // Monthly Reports
+        Object.values(client.monthlyReports).forEach((report: MonthlyReport) => {
+          if (report.deletedAt && report.deletedAt < cutoffISO) {
+            toRemove.push({
+              type: 'monthlyReport',
+              id: report.monthId,
+              staffId: staff.id,
+              clientId: client.id,
+              data: report,
+              deletedAt: report.deletedAt
+            });
+          }
+        });
+        
+        // Visma Weeks
+        Object.values(client.visma).forEach((visma: VismaWeek) => {
+          if (visma.deletedAt && visma.deletedAt < cutoffISO) {
+            toRemove.push({
+              type: 'vismaWeek',
+              id: visma.weekId,
+              staffId: staff.id,
+              clientId: client.id,
+              data: visma,
+              deletedAt: visma.deletedAt
+            });
+          }
+        });
+      }
+    });
+  });
+  
+  return { toRemove, cutoffDate: cutoffISO };
+}
+
+function exportToJSON(data: unknown[], filename: string): void {
+  const jsonStr = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportToCSV(data: Record<string, unknown>[], filename: string): void {
+  if (data.length === 0) return;
+  
+  const firstRow = data[0];
+  if (!firstRow) return;
+  
+  const headers = Object.keys(firstRow);
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => 
+      headers.map(header => {
+        const value = row[header];
+        // Escape CSV values
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      }).join(',')
+    )
+  ].join('\n');
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// NEW: Helper functions for counting affected items
+function countClientData(client: Client): { plans: number; weeks: number; months: number } {
+  return {
+    plans: client.plans.length,
+    weeks: Object.keys(client.weeklyDocs).length,
+    months: Object.keys(client.monthlyReports).length
+  };
+}
+
+function countStaffData(staff: Staff): { clients: number; totalPlans: number; totalWeeks: number; totalMonths: number } {
+  let totalPlans = 0;
+  let totalWeeks = 0;
+  let totalMonths = 0;
+  
+  staff.clients.forEach(client => {
+    const counts = countClientData(client);
+    totalPlans += counts.plans;
+    totalWeeks += counts.weeks;
+    totalMonths += counts.months;
+  });
+  
+  return {
+    clients: staff.clients.length,
+    totalPlans,
+    totalWeeks,
+    totalMonths
+  };
+}
+
+// NEW: Enhanced ConfirmDialog component with impact summary
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  description: string;
+  impactSummary?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDialog({ open, title, description, impactSummary, onConfirm, onCancel }: ConfirmDialogProps) {
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Autofokus på "Ta bort"-knappen när dialog öppnas
+  useEffect(() => {
+    if (open && confirmButtonRef.current) {
+      confirmButtonRef.current.focus();
+    }
+  }, [open]);
+
+  // Keyboard handling
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onCancel();
+    } else if (e.key === 'Enter') {
+      onConfirm();
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 16
+      }}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: 12,
+          padding: 24,
+          maxWidth: 450,
+          width: '100%',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          border: '1px solid rgba(0, 0, 0, 0.1)'
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-description"
+      >
+        <h3
+          id="confirm-dialog-title"
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: '#111827',
+            margin: '0 0 12px 0',
+            lineHeight: 1.4
+          }}
+        >
+          {title}
+        </h3>
+        
+        <p
+          id="confirm-dialog-description"
+          style={{
+            fontSize: 14,
+            color: '#374151',
+            margin: '0 0 16px 0',
+            lineHeight: 1.5
+          }}
+        >
+          {description}
+        </p>
+        
+        {impactSummary && (
+          <div
+            style={{
+              background: '#fef3c7',
+              border: '1px solid #f59e0b',
+              borderRadius: 8,
+              padding: 12,
+              margin: '0 0 24px 0'
+            }}
+          >
+            <div style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#92400e',
+              marginBottom: 4
+            }}>
+              Detta påverkar:
+            </div>
+            <div style={{
+              fontSize: 14,
+              color: '#92400e',
+              lineHeight: 1.4
+            }}>
+              {impactSummary}
+            </div>
+          </div>
+        )}
+        
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            justifyContent: 'flex-end'
+          }}
+        >
+          <button
+            onClick={onCancel}
+            style={{
+              background: '#f8fafc',
+              color: '#374151',
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = '#e2e8f0';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#f8fafc';
+              e.currentTarget.style.borderColor = '#e5e7eb';
+            }}
+          >
+            Avbryt
+          </button>
+          
+          <button
+            ref={confirmButtonRef}
+            onClick={onConfirm}
+            style={{
+              background: '#ff3b30',
+              color: '#ffffff',
+              border: '1px solid #ff3b30',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = '#e53e3e';
+              e.currentTarget.style.borderColor = '#e53e3e';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#ff3b30';
+              e.currentTarget.style.borderColor = '#ff3b30';
+            }}
+          >
+            Ta bort
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- GFP Plan Helper Functions ---------- */
+function nextGfpTitle(plans: GFPPlan[]): string { 
+  return `GFP ${plans.length + 1}`; 
+}
+
+function latestPlan(plans: GFPPlan[] | undefined): GFPPlan | undefined {
+  if (!plans || plans.length === 0) return undefined;
+  // Filter out soft-deleted plans and return the first (newest) active plan
+  const activePlans = plans.filter(p => !p.deletedAt);
+  return activePlans[0]; // Nyaste först
+}
 
 /**
  * Ungdomsstöd Admin – Komplett version
@@ -331,58 +907,6 @@ function PeriodPicker({ type, value, onChange }: PeriodPickerProps) {
   );
 }
 
-// DueBadge Component - Visar GFP förfallodatum
-interface DueBadgeProps {
-  carePlanDate?: string;
-  label?: string;
-}
-
-function DueBadge({ carePlanDate, label = "GFP förfaller" }: DueBadgeProps) {
-  if (!carePlanDate) {
-    return (
-      <div style={{ 
-        fontSize: 12, 
-        color: '#6b7280', 
-        fontStyle: 'italic' 
-      }}>
-        {label}: -
-      </div>
-    );
-  }
-
-  const dueDate = addDaysISO(carePlanDate, 21);
-  const today = todayYMD();
-  const isOverdue = today > dueDate;
-  const isCloseToDeadline = !isOverdue && addDaysISO(today, 7) >= dueDate;
-
-  // Colors are applied directly in the pill style
-
-  return (
-    <div style={{ 
-      ...row(6),
-      fontSize: 12 
-    }}>
-      <span style={{ color: '#374151', fontWeight: 600 }}>
-        {label}:
-      </span>
-      <span style={{
-        ...pill(isOverdue ? 'late' : isCloseToDeadline ? 'pending' : 'approved'),
-        fontWeight: 700
-      }}>
-        {dueDate}
-      </span>
-      {isOverdue && (
-        <span style={{ 
-          color: '#ff3b30', 
-          fontSize: 11, 
-          fontWeight: 600 
-        }}>
-          (Försenad)
-        </span>
-      )}
-    </div>
-  );
-}
 
 // DayMatrix Component - Kompakt dagmatris för vecko- och Visma-data
 interface DayMatrixProps {
@@ -615,13 +1139,15 @@ interface KpiCardProps {
 function KpiCard({ title, value, subtitle, variant = 'info', icon }: KpiCardProps) {
   const c = KPI_COLORS[variant];
   return (
-    <div style={{
-      ...card(),
-      display: 'flex',
-      gap: ui.gap,
-      alignItems: 'center',
-      minHeight: 82
-    }}>
+    <div 
+      className={`kpi-card kpi-${variant}`}
+      style={{
+        ...card(),
+        display: 'flex',
+        gap: ui.gap,
+        alignItems: 'center',
+        minHeight: 82
+      }}>
       <div style={{
         background: c.bg,
         width: 36,
@@ -673,7 +1199,38 @@ function compareMonthId(a: MonthId, b: MonthId): number {
 function loadState(): AppState | undefined {
   try {
     const raw = getStoredData();
-    if (raw) return JSON.parse(raw) as AppState;
+    if (raw) {
+      const state = JSON.parse(raw) as AppState;
+      
+      // MIGRATION: Konvertera gamla Plan-fält till plans[0]
+      state.staff.forEach(staff => {
+        staff.clients.forEach(client => {
+          if (!client.plans) {
+            client.plans = [];
+          }
+          
+          // Om klient har gamla fält men ingen plans[0], skapa en
+          if (client.plan && (client.plan.carePlanDate || client.plan.hasGFP || client.plan.staffNotified || client.plan.notes)) {
+            const hasExistingPlan = client.plans.length > 0;
+            if (!hasExistingPlan) {
+              const legacyPlan: GFPPlan = {
+                id: crypto.randomUUID(),
+                title: 'GFP 1',
+                date: client.plan.carePlanDate || todayYMD(),
+                dueDate: client.plan.carePlanDate ? addDaysISO(client.plan.carePlanDate, 21) : addDaysISO(todayYMD(), 21),
+                note: client.plan.notes || '',
+                staffInformed: client.plan.staffNotified || false,
+                done: client.plan.hasGFP || false,
+                status: client.plan.hasGFP ? 'approved' : 'pending'
+              };
+              client.plans.unshift(legacyPlan); // Lägg först (nyaste)
+            }
+          }
+        });
+      });
+      
+      return state;
+    }
   } catch (error) {
     console.warn("Failed to load state:", error);
   }
@@ -687,7 +1244,8 @@ function newClient(name: string): Client {
   return {
     id: crypto.randomUUID(),
     name,
-    plan: { carePlanDate: undefined, hasGFP: false, staffNotified: false, notes: "" },
+    plan: { carePlanDate: undefined, hasGFP: false, staffNotified: false, notes: "" }, // LEGACY
+    plans: [], // NEW - flera vårdplaner
     weeklyDocs: {},
     monthlyReports: {},
     visma: {},
@@ -1033,12 +1591,29 @@ function Donut({ pct }: { pct: number }) {
 
 /* ---------- Views ---------- */
 function Overview({ state, kpis }: { state: AppState; kpis: Record<string, number> }) {
-  const overviewSamples = useMemo(() => {
+    const overviewSamples = useMemo(() => {
     const weeklyByWeek: Record<string, number> = {};
+    const currentWeekId = getCurrentWeek();
+    
+    // Get history for past weeks (including archived clients)
+    const history = loadHistory();
+    const pastWeeks = history
+      .filter(h => h.periodType === 'week' && h.metric === 'weekDoc' && compareWeekId(h.periodId, currentWeekId) < 0)
+      .filter(h => h.status === 'approved');
+    
+    // Aggregate from history
+    pastWeeks.forEach(entry => {
+      weeklyByWeek[entry.periodId] = (weeklyByWeek[entry.periodId] || 0) + 1;
+    });
+    
+    // Add current week data from active clients only
     state.staff.forEach(st => {
       st.clients.forEach(c => {
+        // Skip archived and soft-deleted clients for current week
+        if (c.archivedAt || c.deletedAt) return;
+        
         Object.entries(c.weeklyDocs).forEach(([weekId, doc]) => {
-          if (doc.status === "approved") {
+          if (doc.status === "approved" && compareWeekId(weekId, currentWeekId) >= 0) {
             weeklyByWeek[weekId] = (weeklyByWeek[weekId] || 0) + 1;
           }
         });
@@ -1048,28 +1623,60 @@ function Overview({ state, kpis }: { state: AppState; kpis: Record<string, numbe
     const sortedWeeks = Object.keys(weeklyByWeek).sort(compareWeekId).slice(-8);
     const series = sortedWeeks.map(w => weeklyByWeek[w] || 0);
 
-    const totalDocs = state.staff.reduce(
+    // Calculate total and approved docs from history + current active clients
+    const currentWeekForDocs = getCurrentWeek();
+    const currentMonthForDocs = getCurrentMonth();
+    
+    // Get all history entries
+    const allHistory = loadHistory();
+    
+    // Count total docs from history (past periods) + current active clients
+    const totalDocs = allHistory.length + state.staff.reduce(
       (sum, st) =>
         sum +
         st.clients.reduce(
-          (cSum, c) => cSum + Object.keys(c.weeklyDocs).length + Object.keys(c.monthlyReports).length,
+          (cSum, c) => {
+            // Skip archived and soft-deleted clients
+            if (c.archivedAt || c.deletedAt) return cSum;
+            // Only count current period docs from active clients
+            let count = 0;
+            Object.entries(c.weeklyDocs).forEach(([weekId]) => {
+              if (compareWeekId(weekId, currentWeekForDocs) >= 0) count++;
+            });
+            Object.entries(c.monthlyReports).forEach(([monthId]) => {
+              if (compareMonthId(monthId, currentMonthForDocs) >= 0) count++;
+            });
+            return cSum + count;
+          },
           0
         ),
       0
     );
 
-    const approvedDocs = state.staff.reduce(
+    // Count approved docs from history + current active clients
+    const approvedFromHistory = allHistory.filter(h => h.status === 'approved').length;
+    const approvedFromCurrent = state.staff.reduce(
       (sum, st) =>
         sum +
         st.clients.reduce(
-          (cSum, c) =>
-            cSum +
-            Object.values(c.weeklyDocs).filter(d => d.status === "approved").length +
-            Object.values(c.monthlyReports).filter(d => d.status === "approved").length,
+          (cSum, c) => {
+            // Skip archived and soft-deleted clients
+            if (c.archivedAt || c.deletedAt) return cSum;
+            let count = 0;
+            Object.values(c.weeklyDocs).forEach(doc => {
+              if (doc.status === "approved" && compareWeekId(doc.weekId, currentWeekForDocs) >= 0) count++;
+            });
+            Object.values(c.monthlyReports).forEach(report => {
+              if (report.status === "approved" && compareMonthId(report.monthId, currentMonthForDocs) >= 0) count++;
+            });
+            return cSum + count;
+          },
           0
         ),
       0
     );
+    
+    const approvedDocs = approvedFromHistory + approvedFromCurrent;
 
     const quality = totalDocs ? approvedDocs / totalDocs : 0;
 
@@ -1079,10 +1686,41 @@ function Overview({ state, kpis }: { state: AppState; kpis: Record<string, numbe
     };
   }, [state.staff]);
 
+  // PRINT NEW: Print function for dashboard
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div>
+    <div data-print-scope="personal-dashboard">
       <div style={headerBar}>
         <div style={title}>Vårdadmin – Dashboard</div>
+        {/* PRINT NEW: Print button */}
+        <button
+          onClick={handlePrint}
+          data-print-keep
+          style={{
+            background: '#007aff',
+            color: '#ffffff',
+            border: '1px solid #007aff',
+            borderRadius: 8,
+            padding: '8px 16px',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = '#0051d5';
+            e.currentTarget.style.borderColor = '#0051d5';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = '#007aff';
+            e.currentTarget.style.borderColor = '#007aff';
+          }}
+        >
+          🖨️ Skriv ut
+        </button>
       </div>
 
       <div style={gridTwo}>
@@ -1110,13 +1748,16 @@ function Overview({ state, kpis }: { state: AppState; kpis: Record<string, numbe
             <div>
               <div style={{ fontSize: 13, color: C.textLight, marginBottom: 6 }}>Godkända per vecka</div>
               <Sparkline points={overviewSamples.series} />
+              <div style={{ fontSize: 11, color: C.textLight, marginTop: 4, fontStyle: 'italic' }}>
+                Historik inkluderar arkiverade klienter
+              </div>
             </div>
             <Donut pct={overviewSamples.quality} />
           </div>
         </div>
       </div>
 
-      <div style={gridThree}>
+      <div style={gridThree} className="kpi-grid">
         <KpiCard title="Försenad plan" value={kpis.delayedPlan ?? 0} subtitle="GFP över 21 dagar" variant="late" />
         <KpiCard title="Försenad dokumentation" value={kpis.delayedDocs ?? 0} subtitle="Ej godkända veckor" variant="waiting" />
         <KpiCard title="Denna vecka" value={kpis.completedThisWeek ?? 0} subtitle="Godkända dokument" variant="success" />
@@ -1124,6 +1765,9 @@ function Overview({ state, kpis }: { state: AppState; kpis: Record<string, numbe
         <KpiCard title="Försenad månadsrapport" value={kpis.delayedMonthly ?? 0} variant="info" />
         <KpiCard title="Försenad Visma-tid" value={kpis.delayedVisma ?? 0} variant="info" />
       </div>
+
+      {/* Tuesday Attendance Group Widget */}
+      <GroupAttendanceWidget />
     </div>
   );
 }
@@ -1137,6 +1781,21 @@ function StaffView({ state, setState, selectedStaff, setView }: {
   const [newStaffName, setNewStaffName] = useState("");
   const [newClientName, setNewClientName] = useState("");
   const [staffQuery, setStaffQuery] = useState("");
+  
+  // NEW: Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    impactSummary?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    impactSummary: undefined,
+    onConfirm: () => {}
+  });
 
   function addStaff(name: string) {
     if (!name.trim()) return;
@@ -1154,6 +1813,25 @@ function StaffView({ state, setState, selectedStaff, setView }: {
     });
   }
 
+  // NEW: Show confirm dialog for staff deletion with impact summary
+  function showDeleteStaffConfirm(staff: Staff) {
+    const counts = countStaffData(staff);
+    const impactSummary = counts.clients > 0 
+      ? `Tar bort ${counts.clients} klienter, ${counts.totalPlans} planer, ${counts.totalWeeks} veckor, ${counts.totalMonths} månadsrapporter`
+      : 'Ingen data att ta bort';
+    
+    setConfirmDialog({
+      open: true,
+      title: "Ta bort personal",
+      description: `Är du säker på att du vill ta bort ${staff.name}? Detta går inte att ångra.`,
+      impactSummary,
+      onConfirm: () => {
+        removeStaff(staff.id);
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
+  }
+
   function addClientToSelected(name: string) {
     if (!selectedStaff || !name.trim()) return;
     setState((prev: AppState) => ({
@@ -1164,15 +1842,60 @@ function StaffView({ state, setState, selectedStaff, setView }: {
     }));
   }
 
-  function removeClient(clientId: string) {
+  function softDeleteClient(clientId: string) {
     if (!selectedStaff) return;
     setState((prev: AppState) => ({
       ...prev,
       staff: prev.staff.map(s =>
-        s.id === selectedStaff.id ? { ...s, clients: s.clients.filter(c => c.id !== clientId) } : s
+        s.id === selectedStaff.id ? { 
+          ...s, 
+          clients: s.clients.map(c => 
+            c.id === clientId 
+              ? { ...c, deletedAt: new Date().toISOString() }
+              : c
+          )
+        } : s
       ),
       selectedClientId: prev.selectedClientId === clientId ? undefined : prev.selectedClientId
     }));
+  }
+
+  // Helper function for restoring soft-deleted clients (used in ArchiveView)
+  // function restoreClient(clientId: string) {
+  //   if (!selectedStaff) return;
+  //   setState((prev: AppState) => ({
+  //     ...prev,
+  //     staff: prev.staff.map(s =>
+  //       s.id === selectedStaff.id ? { 
+  //         ...s, 
+  //         clients: s.clients.map(c => 
+  //           c.id === clientId 
+  //             ? { ...c, deletedAt: undefined }
+  //             : c
+  //         )
+  //       } : s
+  //     )
+  //   }));
+  // }
+
+
+  // NEW: Show confirm dialog for client soft deletion with impact summary
+  function showDeleteClientConfirm(client: Client) {
+    const counts = countClientData(client);
+    const impactSummary = counts.plans > 0 || counts.weeks > 0 || counts.months > 0
+      ? `Mjuk-raderar ${counts.plans} planer, ${counts.weeks} veckor, ${counts.months} månadsrapporter (bevaras för historik)`
+      : 'Ingen data att radera';
+    
+    setConfirmDialog({
+      open: true,
+      title: "Ta bort klient",
+      description: `Är du säker på att du vill ta bort ${client.name}? Klienten försvinner från aktiva listor men all historik bevaras.`,
+      impactSummary,
+      onConfirm: () => {
+        softDeleteClient(client.id);
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
   }
 
   const filtered = state.staff.filter((s: Staff) => s.name.toLowerCase().includes(staffQuery.toLowerCase()));
@@ -1247,7 +1970,7 @@ function StaffView({ state, setState, selectedStaff, setView }: {
                   }}
                 >
                   <div style={nameStyle}>{s.name}</div>
-                  <div style={metaStyle}>{s.clients.length} klienter</div>
+                  <div style={metaStyle}>{s.clients.filter(c => !c.archivedAt && !c.deletedAt).length} klienter</div>
                 </button>
                 <button 
                   style={{ ...primaryBtn, fontSize: 12, padding: "4px 8px" }} 
@@ -1258,7 +1981,7 @@ function StaffView({ state, setState, selectedStaff, setView }: {
                 >
                   Dashboard
                 </button>
-                <button style={{ ...btn, fontSize: 12, padding: "4px 8px" }} onClick={() => removeStaff(s.id)}>
+                <button style={{ ...btn, fontSize: 12, padding: "4px 8px" }} onClick={() => showDeleteStaffConfirm(s)}>
                   Ta bort
                 </button>
               </div>
@@ -1289,8 +2012,8 @@ function StaffView({ state, setState, selectedStaff, setView }: {
               </div>
 
               <div style={{ ...col(6), maxHeight: 450, overflow: "auto" }}>
-                {/* NEW: Updated client list with proper contrast */}
-                {selectedStaff.clients.map((c: Client) => (
+                {/* NEW: Updated client list with proper contrast - only show active clients */}
+                {selectedStaff.clients.filter(c => !c.archivedAt && !c.deletedAt).map((c: Client) => (
                   <div
                     key={c.id}
                     style={{
@@ -1331,13 +2054,13 @@ function StaffView({ state, setState, selectedStaff, setView }: {
                     >
                       <div style={nameStyle}>{c.name}</div>
                       <div style={metaStyle}>
-                        Plan: {c.plan.carePlanDate || "Saknas"} • GFP: {c.plan.hasGFP ? "✓" : "–"}
+                        Planer: {c.plans.length} • Senaste: {latestPlan(c.plans)?.title || "Ingen"}
                       </div>
                     </button>
                     <button style={primaryBtn} onClick={() => { setState((prev: AppState) => ({ ...prev, selectedClientId: c.id })); setView("client"); }}>
                       Öppna
                     </button>
-                    <button style={{ ...btn, fontSize: 12 }} onClick={() => removeClient(c.id)}>
+                    <button style={{ ...btn, fontSize: 12 }} onClick={() => showDeleteClientConfirm(c)}>
                       Ta bort
                     </button>
                   </div>
@@ -1347,6 +2070,16 @@ function StaffView({ state, setState, selectedStaff, setView }: {
           )}
         </div>
       </div>
+      
+      {/* NEW: Confirm dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        impactSummary={confirmDialog.impactSummary}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 }
@@ -1354,11 +2087,44 @@ function StaffView({ state, setState, selectedStaff, setView }: {
 /* ---------- ClientWork Section Content Components ---------- */
 
 // Veckodokumentation innehåll
-function WeeklyDocContent({ weeklyDoc, saveWeeklyDoc, weekIdInput }: {
+function WeeklyDocContent({ weeklyDoc, saveWeeklyDoc, weekIdInput, clientId }: {
   weeklyDoc: WeeklyDoc;
   saveWeeklyDoc: (weekId: WeekId, doc: WeeklyDoc) => void;
   weekIdInput: WeekId;
+  clientId: string;
 }) {
+  const [note, setNote] = useState(weeklyDoc.note || '');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [lastSaved, setLastSaved] = useState<string>('');
+  
+  // NEW: Debounced save with period-based storage
+  const debouncedSave = useRef(debounceNote((noteValue: string) => {
+    const updatedDoc = { ...weeklyDoc, note: noteValue };
+    savePeriodData(clientId, 'weekly', weekIdInput, updatedDoc);
+    setSaveStatus('saved');
+    setLastSaved(new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }));
+  }, 500));
+
+  // NEW: Load data when period changes (ensures isolation)
+  useEffect(() => {
+    const defaultDoc: WeeklyDoc = {
+      weekId: weekIdInput,
+      days: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false },
+      status: "pending",
+      note: ''
+    };
+    
+    const loadedDoc = loadPeriodData(clientId, 'weekly', weekIdInput, defaultDoc);
+    setNote(loadedDoc.note || '');
+    setSaveStatus('idle');
+    setLastSaved('');
+    
+    // Update the parent component with loaded data
+    if (JSON.stringify(loadedDoc) !== JSON.stringify(weeklyDoc)) {
+      saveWeeklyDoc(weekIdInput, loadedDoc);
+    }
+  }, [weekIdInput, clientId, weeklyDoc, saveWeeklyDoc]); // NEW: Re-load when period or client changes
+
   const handleDayChange = (day: string, checked: boolean) => {
     const newDoc = { 
       ...weeklyDoc, 
@@ -1366,6 +2132,24 @@ function WeeklyDocContent({ weeklyDoc, saveWeeklyDoc, weekIdInput }: {
       lastUpdated: new Date().toISOString()
     };
     saveWeeklyDoc(weekIdInput, newDoc);
+    // NEW: Also save to period-based storage
+    savePeriodData(clientId, 'weekly', weekIdInput, newDoc);
+  };
+
+  const handleNoteChange = (value: string) => {
+    setNote(value);
+    setSaveStatus('saving');
+    // NEW: Update weeklyDoc object with new note
+    const updatedDoc = { ...weeklyDoc, note: value };
+    saveWeeklyDoc(weekIdInput, updatedDoc);
+    debouncedSave.current(value);
+  };
+
+  const handleNoteBlur = () => {
+    const updatedDoc = { ...weeklyDoc, note: note };
+    savePeriodData(clientId, 'weekly', weekIdInput, updatedDoc);
+    setSaveStatus('saved');
+    setLastSaved(new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }));
   };
 
   return (
@@ -1391,15 +2175,43 @@ function WeeklyDocContent({ weeklyDoc, saveWeeklyDoc, weekIdInput }: {
           <option value="rejected">{STATUS_LABEL.rejected}</option>
         </select>
       </div>
+
+      {/* NEW: Note section */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Notis för veckan</div>
+          <div style={{ fontSize: 11, color: ui.textMute }}>
+            {saveStatus === 'saving' && 'Sparar...'}
+            {saveStatus === 'saved' && lastSaved && `Sparat ${lastSaved}`}
+          </div>
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => handleNoteChange(e.target.value)}
+          onBlur={handleNoteBlur}
+          placeholder="Kort notis för veckan…"
+          style={{
+            ...textareaBase,
+            height: 64,
+            fontSize: 14,
+            borderRadius: 8,
+            border: '1px solid #E5E7EB',
+            background: '#ffffff',
+            color: '#111111'
+          }}
+          aria-label="Veckodokumentation notis"
+        />
+      </div>
     </>
   );
 }
 
-function WeeklyDocSection({ weeklyDoc, saveWeeklyDoc, weekIdInput, setWeekIdInput }: {
+function WeeklyDocSection({ weeklyDoc, saveWeeklyDoc, weekIdInput, setWeekIdInput, clientId }: {
   weeklyDoc: WeeklyDoc;
   saveWeeklyDoc: (weekId: WeekId, doc: WeeklyDoc) => void;
   weekIdInput: WeekId;
   setWeekIdInput: (weekId: WeekId) => void;
+  clientId: string;
 }) {
   const headerActions = (
     <PeriodPicker
@@ -1419,50 +2231,130 @@ function WeeklyDocSection({ weeklyDoc, saveWeeklyDoc, weekIdInput, setWeekIdInpu
         weeklyDoc={weeklyDoc}
         saveWeeklyDoc={saveWeeklyDoc}
         weekIdInput={weekIdInput}
+        clientId={clientId}
       />
     </Card>
   );
 }
 
 // Månadsrapport innehåll
-function MonthlyReportContent({ monthlyReport, saveMonthlyReport, monthIdInput }: {
+function MonthlyReportContent({ monthlyReport, saveMonthlyReport, monthIdInput, clientId }: {
   monthlyReport: MonthlyReport;
   saveMonthlyReport: (monthId: MonthId, report: MonthlyReport) => void;
   monthIdInput: MonthId;
+  clientId: string;
 }) {
+  const [note, setNote] = useState(monthlyReport.note || '');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [lastSaved, setLastSaved] = useState<string>('');
+  
+  // NEW: Debounced save with period-based storage
+  const debouncedSave = useRef(debounceNote((noteValue: string) => {
+    const updatedReport = { ...monthlyReport, note: noteValue };
+    savePeriodData(clientId, 'monthly', monthIdInput, updatedReport);
+    setSaveStatus('saved');
+    setLastSaved(new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }));
+  }, 500));
+
+  // NEW: Load data when period changes (ensures isolation)
+  useEffect(() => {
+    const defaultReport: MonthlyReport = {
+      monthId: monthIdInput,
+      sent: false,
+      status: "pending",
+      note: ''
+    };
+    
+    const loadedReport = loadPeriodData(clientId, 'monthly', monthIdInput, defaultReport);
+    setNote(loadedReport.note || '');
+    setSaveStatus('idle');
+    setLastSaved('');
+    
+    // Update the parent component with loaded data
+    if (JSON.stringify(loadedReport) !== JSON.stringify(monthlyReport)) {
+      saveMonthlyReport(monthIdInput, loadedReport);
+    }
+  }, [monthIdInput, clientId, monthlyReport, saveMonthlyReport]); // NEW: Re-load when period or client changes
+
+  const handleNoteChange = (value: string) => {
+    setNote(value);
+    setSaveStatus('saving');
+    // NEW: Update monthlyReport object with new note
+    const updatedReport = { ...monthlyReport, note: value };
+    saveMonthlyReport(monthIdInput, updatedReport);
+    debouncedSave.current(value);
+  };
+
+  const handleNoteBlur = () => {
+    const updatedReport = { ...monthlyReport, note: note };
+    savePeriodData(clientId, 'monthly', monthIdInput, updatedReport);
+    setSaveStatus('saved');
+    setLastSaved(new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }));
+  };
+
   return (
-    <div style={{ ...row(12), flexWrap: "wrap" }}>
-      <label style={{ ...row(8) }}>
-        <input
-          type="checkbox"
-          checked={monthlyReport.sent}
-          onChange={(e) => saveMonthlyReport(monthIdInput, { ...monthlyReport, sent: e.target.checked })}
-        />
-        Skickad
-      </label>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <div style={{ fontSize: 12, fontWeight: 600 }}>Status:</div>
-        <select
-          value={monthlyReport.status}
-          onChange={(e) => saveMonthlyReport(monthIdInput, { ...monthlyReport, status: e.target.value as DocStatus })}
-          style={selectBase}
-          aria-label="Månadsrapport status"
-        >
-          {/* UPDATED: Use STATUS_LABEL for all option labels */}
-          <option value="pending">{STATUS_LABEL.pending}</option>
-          <option value="approved">{STATUS_LABEL.approved}</option>
-          <option value="rejected">{STATUS_LABEL.rejected}</option>
-        </select>
+    <>
+      <div style={{ ...row(12), flexWrap: "wrap" }}>
+        <label style={{ ...row(8) }}>
+          <input
+            type="checkbox"
+            checked={monthlyReport.sent}
+            onChange={(e) => saveMonthlyReport(monthIdInput, { ...monthlyReport, sent: e.target.checked })}
+          />
+          Skickad
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Status:</div>
+          <select
+            value={monthlyReport.status}
+            onChange={(e) => saveMonthlyReport(monthIdInput, { ...monthlyReport, status: e.target.value as DocStatus })}
+            style={selectBase}
+            aria-label="Månadsrapport status"
+          >
+            {/* UPDATED: Use STATUS_LABEL for all option labels */}
+            <option value="pending">{STATUS_LABEL.pending}</option>
+            <option value="approved">{STATUS_LABEL.approved}</option>
+            <option value="rejected">{STATUS_LABEL.rejected}</option>
+          </select>
+        </div>
       </div>
-    </div>
+
+      {/* NEW: Note section */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Notis för månaden</div>
+          <div style={{ fontSize: 11, color: ui.textMute }}>
+            {saveStatus === 'saving' && 'Sparar...'}
+            {saveStatus === 'saved' && lastSaved && `Sparat ${lastSaved}`}
+          </div>
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => handleNoteChange(e.target.value)}
+          onBlur={handleNoteBlur}
+          placeholder="Kort notis för månaden…"
+          style={{
+            ...textareaBase,
+            height: 64,
+            fontSize: 14,
+            borderRadius: 8,
+            border: '1px solid #E5E7EB',
+            background: '#ffffff',
+            color: '#111111'
+          }}
+          aria-label="Månadsrapport notis"
+        />
+      </div>
+    </>
   );
 }
 
-function MonthlyReportSection({ monthlyReport, saveMonthlyReport, monthIdInput, setMonthIdInput }: {
+function MonthlyReportSection({ monthlyReport, saveMonthlyReport, monthIdInput, setMonthIdInput, clientId }: {
   monthlyReport: MonthlyReport;
   saveMonthlyReport: (monthId: MonthId, report: MonthlyReport) => void;
   monthIdInput: MonthId;
   setMonthIdInput: (monthId: MonthId) => void;
+  clientId: string;
 }) {
   const headerActions = (
     <PeriodPicker
@@ -1482,6 +2374,7 @@ function MonthlyReportSection({ monthlyReport, saveMonthlyReport, monthIdInput, 
         monthlyReport={monthlyReport}
         saveMonthlyReport={saveMonthlyReport}
         monthIdInput={monthIdInput}
+        clientId={clientId}
       />
     </Card>
   );
@@ -1558,59 +2451,168 @@ function VismaSection({ vismaWeek, saveVisma, weekIdInput, setWeekIdInput }: {
   );
 }
 
-// Plan innehåll
-function PlanContent({ selectedClient, savePlan }: {
+// Plan innehåll - Uppdaterad för flera GFP-planer
+function PlanContent({ selectedClient, savePlan, addNewPlan, showDeletePlanConfirm }: {
   selectedClient: Client;
-  savePlan: (updates: Partial<Plan>) => void;
+  savePlan: (updates: Partial<Plan> | { plans: GFPPlan[] }) => void;
+  addNewPlan: () => void;
+  showDeletePlanConfirm: (plan: GFPPlan) => void;
 }) {
+  const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
+  
+  // Filter out soft-deleted plans
+  const activePlans = selectedClient.plans.filter(p => !p.deletedAt);
+  const currentPlan = activePlans[selectedPlanIndex];
+  
+  const saveCurrentPlan = (updates: Partial<GFPPlan>) => {
+    if (!currentPlan) return;
+    
+    const updatedPlans = [...selectedClient.plans];
+    updatedPlans[selectedPlanIndex] = { ...currentPlan, ...updates };
+    
+    // Uppdatera genom savePlan (som kommer att hantera state-uppdatering)
+    savePlan({ plans: updatedPlans });
+  };
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, alignItems: "start" }}>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 4 }}>Datum (vårdplan)</div>
-        <input
-          type="date"
-          value={selectedClient.plan.carePlanDate ?? ""}
-          onChange={(e) => savePlan({ carePlanDate: e.target.value || undefined })}
-          style={inputBase}
-          aria-label="Vårdplan datum"
-        />
-      </div>
-      
-      <div>
-        <DueBadge carePlanDate={selectedClient.plan.carePlanDate} />
+    <div>
+      {/* Flikar/Chips för planer + Ny plan-knapp */}
+      <div style={{ ...row(8), marginBottom: 16, flexWrap: "wrap" }}>
+        {activePlans.map((plan, index) => (
+          <div key={plan.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              onClick={() => setSelectedPlanIndex(index)}
+              style={{
+                background: selectedPlanIndex === index ? ui.blue : ui.bgAlt,
+                color: selectedPlanIndex === index ? '#ffffff' : ui.text,
+                border: `1px solid ${selectedPlanIndex === index ? ui.blue : ui.border}`,
+                borderRadius: 8,
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {plan.title}
+            </button>
+            {/* NEW: Delete plan button */}
+            {activePlans.length > 1 && (
+              <button
+                onClick={() => showDeletePlanConfirm(plan)}
+                style={{
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  border: '1px solid #fecaca',
+                  borderRadius: 6,
+                  padding: '4px 6px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  minWidth: 20,
+                  height: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = '#fecaca';
+                  e.currentTarget.style.borderColor = '#fca5a5';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = '#fee2e2';
+                  e.currentTarget.style.borderColor = '#fecaca';
+                }}
+                title={`Ta bort ${plan.title}`}
+                aria-label={`Ta bort ${plan.title}`}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={addNewPlan}
+          style={{
+            background: ui.green,
+            color: '#ffffff',
+            border: `1px solid ${ui.green}`,
+            borderRadius: 8,
+            padding: '6px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          + Ny plan
+        </button>
       </div>
 
-      <div>
-        <label style={{ ...row(8) }}>
-          <input
-            type="checkbox"
-            checked={selectedClient.plan.staffNotified}
-            onChange={(e) => savePlan({ staffNotified: e.target.checked })}
-          />
-          Personal tillsagd
-        </label>
-      </div>
-      
-      <div>
-        <label style={{ ...row(8) }}>
-          <input
-            type="checkbox"
-            checked={selectedClient.plan.hasGFP}
-            onChange={(e) => savePlan({ hasGFP: e.target.checked })}
-          />
-          GFP klar
-        </label>
-      </div>
+      {/* Innehåll för vald plan */}
+      {currentPlan ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, alignItems: "start" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 4 }}>Datum (vårdplan)</div>
+            <input
+              type="date"
+              value={currentPlan.date}
+              onChange={(e) => saveCurrentPlan({ date: e.target.value, dueDate: addDaysISO(e.target.value, 21) })}
+              style={inputBase}
+              aria-label="Vårdplan datum"
+            />
+          </div>
+          
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 4 }}>Förfallodatum</div>
+            <div style={{ ...pill(currentPlan.done ? 'approved' : (todayYMD() > currentPlan.dueDate ? 'rejected' : 'pending')), fontWeight: 700 }}>
+              {currentPlan.dueDate}
+            </div>
+            {todayYMD() > currentPlan.dueDate && !currentPlan.done && (
+              <div style={{ color: ui.red, fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                (Försenad)
+              </div>
+            )}
+          </div>
 
-      <div style={{ gridColumn: "1 / -1" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 4 }}>Anteckning</div>
-        <textarea
-          value={selectedClient.plan.notes}
-          onChange={(e) => savePlan({ notes: e.target.value })}
-          placeholder="Skriv anteckning…"
-          style={textareaBase}
-        />
-      </div>
+          <div>
+            <label style={{ ...row(8) }}>
+              <input
+                type="checkbox"
+                checked={currentPlan.staffInformed}
+                onChange={(e) => saveCurrentPlan({ staffInformed: e.target.checked })}
+              />
+              Personal tillsagd
+            </label>
+          </div>
+          
+          <div>
+            <label style={{ ...row(8) }}>
+              <input
+                type="checkbox"
+                checked={currentPlan.done}
+                onChange={(e) => saveCurrentPlan({ done: e.target.checked, status: e.target.checked ? 'approved' : 'pending' })}
+              />
+              GFP klar
+            </label>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 4 }}>Anteckning</div>
+            <textarea
+              value={currentPlan.note}
+              onChange={(e) => saveCurrentPlan({ note: e.target.value })}
+              placeholder="Skriv anteckning…"
+              style={textareaBase}
+            />
+          </div>
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', color: ui.textMute, padding: 20 }}>
+          Inga planer än. Klicka "Ny plan" för att skapa en.
+        </div>
+      )}
     </div>
   );
 }
@@ -1627,7 +2629,7 @@ function ClientWorkFull({
   setMonthIdInput
 }: {
   selectedClient: Client | undefined;
-  savePlan: (updates: Partial<Plan>) => void;
+  savePlan: (updates: Partial<Plan> | { plans: GFPPlan[] }) => void;
   saveWeeklyDoc: (weekId: WeekId, doc: WeeklyDoc) => void;
   saveMonthlyReport: (monthId: MonthId, report: MonthlyReport) => void;
   saveVisma: (weekId: WeekId, visma: VismaWeek) => void;
@@ -1637,6 +2639,41 @@ function ClientWorkFull({
   setMonthIdInput: (monthId: MonthId) => void;
 }) {
   const [isMobile, setIsMobile] = useState(false);
+  
+  // NEW: Confirm dialog state for plan deletion
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    impactSummary?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    impactSummary: undefined,
+    onConfirm: () => {}
+  });
+
+  // NEW: Show confirm dialog for plan soft deletion with impact summary
+  function showDeletePlanConfirm(plan: GFPPlan) {
+    setConfirmDialog({
+      open: true,
+      title: "Ta bort plan",
+      description: `Är du säker på att du vill ta bort ${plan.title}? Planen försvinner från aktiva listor men all historik bevaras.`,
+      impactSummary: "Mjuk-raderar 1 plan",
+      onConfirm: () => {
+        if (!selectedClient) return;
+        const updatedPlans = selectedClient.plans.map(p => 
+          p.id === plan.id 
+            ? { ...p, deletedAt: new Date().toISOString() }
+            : p
+        );
+        savePlan({ plans: updatedPlans });
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
+  }
 
   // Responsive check
   useEffect(() => {
@@ -1662,17 +2699,26 @@ function ClientWorkFull({
     );
   }
 
-  const weeklyDoc = selectedClient.weeklyDocs[weekIdInput] || {
-    weekId: weekIdInput,
-    days: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false },
-    status: "pending" as DocStatus
-  };
+  // NEW: Load period data with proper isolation
+  const weeklyDoc = (() => {
+    const defaultDoc: WeeklyDoc = {
+      weekId: weekIdInput,
+      days: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false },
+      status: "pending" as DocStatus,
+      note: ''
+    };
+    return loadPeriodData(selectedClient.id, 'weekly', weekIdInput, defaultDoc);
+  })();
 
-  const monthlyReport = selectedClient.monthlyReports[monthIdInput] || {
-    monthId: monthIdInput,
-    sent: false,
-    status: "pending" as DocStatus
-  };
+  const monthlyReport = (() => {
+    const defaultReport: MonthlyReport = {
+      monthId: monthIdInput,
+      sent: false,
+      status: "pending" as DocStatus,
+      note: ''
+    };
+    return loadPeriodData(selectedClient.id, 'monthly', monthIdInput, defaultReport);
+  })();
 
   const vismaWeek = selectedClient.visma[weekIdInput] || {
     weekId: weekIdInput,
@@ -1680,15 +2726,15 @@ function ClientWorkFull({
     status: "pending" as DocStatus
   };
 
-  // Plan status beräkning
+  // Plan status beräkning - använd senaste planen
   const getPlanStatus = (): DocStatus => {
-    if (!selectedClient.plan.carePlanDate) return "pending";
-    if (!selectedClient.plan.hasGFP) {
+    const latest = latestPlan(selectedClient.plans);
+    if (!latest) return "pending";
+    if (!latest.done) {
       const today = todayYMD();
-      const due = addDaysISO(selectedClient.plan.carePlanDate, 21);
-      if (today > due) return "rejected"; // Försenad
+      if (today > latest.dueDate) return "rejected"; // Försenad
     }
-    return selectedClient.plan.hasGFP ? "approved" : "pending";
+    return latest.done ? "approved" : "pending";
   };
 
   const planStatus = getPlanStatus();
@@ -1700,7 +2746,20 @@ function ClientWorkFull({
         id: 'plan',
         title: 'Plan (GFP)',
         status: planStatus,
-        children: <PlanContent selectedClient={selectedClient} savePlan={savePlan} />
+        children: <PlanContent selectedClient={selectedClient} savePlan={savePlan} addNewPlan={() => {
+          const newPlan: GFPPlan = {
+            id: crypto.randomUUID(),
+            title: nextGfpTitle(selectedClient.plans),
+            date: todayYMD(),
+            dueDate: addDaysISO(todayYMD(), 21),
+            note: '',
+            staffInformed: false,
+            done: false,
+            status: 'pending'
+          };
+          const updatedPlans = [newPlan, ...selectedClient.plans];
+          savePlan({ plans: updatedPlans });
+        }} showDeletePlanConfirm={showDeletePlanConfirm} />
       },
       {
         id: 'weekly',
@@ -1715,7 +2774,7 @@ function ClientWorkFull({
             />
           </div>
         ),
-        children: <WeeklyDocContent weeklyDoc={weeklyDoc} saveWeeklyDoc={saveWeeklyDoc} weekIdInput={weekIdInput} />
+        children: <WeeklyDocContent weeklyDoc={weeklyDoc} saveWeeklyDoc={saveWeeklyDoc} weekIdInput={weekIdInput} clientId={selectedClient.id} />
       },
       {
         id: 'monthly',
@@ -1730,7 +2789,7 @@ function ClientWorkFull({
             />
           </div>
         ),
-        children: <MonthlyReportContent monthlyReport={monthlyReport} saveMonthlyReport={saveMonthlyReport} monthIdInput={monthIdInput} />
+        children: <MonthlyReportContent monthlyReport={monthlyReport} saveMonthlyReport={saveMonthlyReport} monthIdInput={monthIdInput} clientId={selectedClient.id} />
       },
       {
         id: 'visma',
@@ -1782,7 +2841,20 @@ function ClientWorkFull({
           title="Plan (GFP)"
           status={planStatus}
         >
-          <PlanContent selectedClient={selectedClient} savePlan={savePlan} />
+          <PlanContent selectedClient={selectedClient} savePlan={savePlan} addNewPlan={() => {
+            const newPlan: GFPPlan = {
+              id: crypto.randomUUID(),
+              title: nextGfpTitle(selectedClient.plans),
+              date: todayYMD(),
+              dueDate: addDaysISO(todayYMD(), 21),
+              note: '',
+              staffInformed: false,
+              done: false,
+              status: 'pending'
+            };
+            const updatedPlans = [newPlan, ...selectedClient.plans];
+            savePlan({ plans: updatedPlans });
+          }} showDeletePlanConfirm={showDeletePlanConfirm} />
         </Card>
 
         <WeeklyDocSection
@@ -1790,6 +2862,7 @@ function ClientWorkFull({
           saveWeeklyDoc={saveWeeklyDoc}
           weekIdInput={weekIdInput}
           setWeekIdInput={setWeekIdInput}
+          clientId={selectedClient.id}
         />
         
         <MonthlyReportSection
@@ -1797,6 +2870,7 @@ function ClientWorkFull({
           saveMonthlyReport={saveMonthlyReport}
           monthIdInput={monthIdInput}
           setMonthIdInput={setMonthIdInput}
+          clientId={selectedClient.id}
         />
         
         <VismaSection
@@ -1806,6 +2880,16 @@ function ClientWorkFull({
           setWeekIdInput={setWeekIdInput}
         />
       </div>
+      
+      {/* NEW: Confirm dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        impactSummary={confirmDialog.impactSummary}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 }
@@ -1880,12 +2964,303 @@ function StaffDetail({ state, selectedStaff }: { state: AppState; selectedStaff:
   );
 }
 
+function ArchiveView({ state, setState }: { state: AppState; setState: (fn: (prev: AppState) => AppState) => void }) {
+  const [staffQuery, setStaffQuery] = useState("");
+  const [retentionDays, setRetentionDays] = useState(180);
+  
+  // NEW: Confirm dialog state for restore and cleanup
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    impactSummary?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    onConfirm: () => {}
+  });
+
+  function restoreClient(clientId: string, staffId: string) {
+    setState((prev: AppState) => ({
+      ...prev,
+      staff: prev.staff.map(s =>
+        s.id === staffId ? { 
+          ...s, 
+          clients: s.clients.map(c => 
+            c.id === clientId 
+              ? { ...c, archivedAt: undefined, deletedAt: undefined }
+              : c
+          )
+        } : s
+      )
+    }));
+  }
+
+  function showRestoreClientConfirm(client: Client) {
+    setConfirmDialog({
+      open: true,
+      title: "Återställ klient",
+      description: `Är du säker på att du vill återställa ${client.name}? Klienten kommer att visas i aktiva listor igen.`,
+      onConfirm: () => {
+        const staff = state.staff.find(s => s.clients.some(c => c.id === client.id));
+        if (staff) {
+          restoreClient(client.id, staff.id);
+        }
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
+  }
+
+  // NEW: Cleanup functions
+  function performRetentionCleanup() {
+    const sweepResult = retentionSweep(retentionDays);
+    
+    if (sweepResult.toRemove.length === 0) {
+      alert('Inga gamla poster att rensa.');
+      return;
+    }
+
+    setConfirmDialog({
+      open: true,
+      title: "Rensa gamla arkiverade poster",
+      description: `Är du säker på att du vill rensa ${sweepResult.toRemove.length} poster som är äldre än ${retentionDays} dagar? Denna åtgärd kan inte ångras.`,
+      impactSummary: `Rensar ${sweepResult.toRemove.filter(item => item.type === 'client').length} klienter, ${sweepResult.toRemove.filter(item => item.type === 'plan').length} planer, ${sweepResult.toRemove.filter(item => item.type === 'weeklyDoc').length} veckorapporter, ${sweepResult.toRemove.filter(item => item.type === 'monthlyReport').length} månadsrapporter, ${sweepResult.toRemove.filter(item => item.type === 'vismaWeek').length} Visma-veckor`,
+      onConfirm: () => {
+        executeRetentionCleanup(sweepResult.toRemove);
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
+  }
+
+  function exportBeforeCleanup() {
+    const sweepResult = retentionSweep(retentionDays);
+    
+    if (sweepResult.toRemove.length === 0) {
+      alert('Inga gamla poster att exportera.');
+      return;
+    }
+
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const exportData = sweepResult.toRemove.map(item => ({
+      type: item.type,
+      id: item.id,
+      staffId: item.staffId,
+      clientId: item.clientId,
+      deletedAt: item.deletedAt,
+      data: JSON.stringify(item.data)
+    }));
+
+    exportToJSON(exportData, `ungdomsstod-retention-export-${timestamp}.json`);
+    exportToCSV(exportData, `ungdomsstod-retention-export-${timestamp}.csv`);
+  }
+
+  function executeRetentionCleanup(toRemove: Array<{ type: string; id: string; staffId: string; clientId?: string }>) {
+    setState((prev: AppState) => {
+      const newState = { ...prev };
+      
+      toRemove.forEach(item => {
+        const staffIndex = newState.staff.findIndex(s => s.id === item.staffId);
+        if (staffIndex === -1) return;
+
+        const staff = newState.staff[staffIndex];
+        if (!staff) return;
+
+        if (item.type === 'client') {
+          // Remove entire client
+          staff.clients = staff.clients.filter(c => c.id !== item.id);
+        } else if (item.clientId) {
+          // Remove individual items within client
+          const clientIndex = staff.clients.findIndex(c => c.id === item.clientId);
+          if (clientIndex === -1) return;
+
+          const client = staff.clients[clientIndex];
+          if (!client) return;
+          
+          switch (item.type) {
+            case 'plan':
+              client.plans = client.plans.filter(p => p.id !== item.id);
+              break;
+            case 'weeklyDoc':
+              delete client.weeklyDocs[item.id as WeekId];
+              break;
+            case 'monthlyReport':
+              delete client.monthlyReports[item.id as MonthId];
+              break;
+            case 'vismaWeek':
+              delete client.visma[item.id as WeekId];
+              break;
+          }
+        }
+      });
+      
+      return newState;
+    });
+    
+    alert(`${toRemove.length} poster har rensats från arkivet.`);
+  }
+
+  // Get all archived and soft-deleted clients grouped by staff
+  const archivedClientsByStaff = useMemo(() => {
+    const result: Array<{ staff: Staff; clients: Client[] }> = [];
+    
+    state.staff.forEach(staff => {
+      const archivedClients = staff.clients.filter(c => c.archivedAt || c.deletedAt);
+      if (archivedClients.length > 0) {
+        result.push({ staff, clients: archivedClients });
+      }
+    });
+    
+    return result;
+  }, [state.staff]);
+
+  const filteredStaff = archivedClientsByStaff.filter(({ staff }) => 
+    staff.name.toLowerCase().includes(staffQuery.toLowerCase())
+  );
+
+  return (
+    <div>
+      <div style={headerBar}>
+        <div style={title}>Arkiverade & borttagna klienter</div>
+      </div>
+
+      {/* NEW: Retention cleanup controls */}
+      <div style={card()}>
+        <div style={cardHeader}>
+          <div style={{ fontWeight: 800 }}>Rensa gamla arkiverade poster</div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+            Rensa poster äldre än (dagar):
+          </label>
+          <input
+            type="number"
+            value={retentionDays}
+            onChange={e => setRetentionDays(parseInt(e.target.value) || 180)}
+            min="1"
+            max="3650"
+            style={{ ...inputBase, width: 120 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            style={{
+              ...primaryBtn,
+              background: '#007aff',
+              fontSize: 14
+            }}
+            onClick={exportBeforeCleanup}
+          >
+            🗃️ Exportera gamla poster
+          </button>
+          <button
+            style={{
+              ...primaryBtn,
+              background: '#ff3b30',
+              fontSize: 14
+            }}
+            onClick={performRetentionCleanup}
+          >
+            🗑️ Rensa gamla poster
+          </button>
+        </div>
+      </div>
+
+      <div style={card()}>
+        <div style={cardHeader}>
+          <div style={{ fontWeight: 800 }}>Arkiverade & borttagna klienter</div>
+        </div>
+
+        <input
+          placeholder="Sök personal…"
+          value={staffQuery}
+          onChange={e => setStaffQuery(e.target.value)}
+          style={{ ...inputBase, width: '100%', marginBottom: 16 }}
+        />
+
+        {filteredStaff.length === 0 ? (
+          <div style={{ color: C.textLight, textAlign: 'center', padding: 20 }}>
+            {staffQuery ? 'Inga arkiverade eller borttagna klienter hittades för denna personal.' : 'Inga arkiverade eller borttagna klienter.'}
+          </div>
+        ) : (
+          <div style={{ ...col(12) }}>
+            {filteredStaff.map(({ staff, clients }) => (
+              <div key={staff.id} style={card()}>
+                <div style={{ fontWeight: 700, marginBottom: 12, color: ui.text }}>
+                  {staff.name} ({clients.length} arkiverade/borttagna)
+                </div>
+                <div style={{ ...col(8) }}>
+                  {clients.map(client => (
+                    <div
+                      key={client.id}
+                      style={{
+                        ...listItemStyle(false),
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 12,
+                        alignItems: "center"
+                      }}
+                    >
+                      <div>
+                        <div style={nameStyle}>{client.name}</div>
+                        <div style={metaStyle}>
+                          {client.archivedAt && `Arkiverad: ${new Date(client.archivedAt).toLocaleDateString('sv-SE')}`}
+                          {client.deletedAt && `Borttagen: ${new Date(client.deletedAt).toLocaleDateString('sv-SE')}`}
+                        </div>
+                      </div>
+                      <button 
+                        style={{
+                          ...primaryBtn,
+                          fontSize: 12,
+                          padding: "6px 12px"
+                        }}
+                        onClick={() => showRestoreClientConfirm(client)}
+                      >
+                        Återställ
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        impactSummary={confirmDialog.impactSummary}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+      />
+    </div>
+  );
+}
+
 /* ---------- App Render ---------- */
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadState() ?? initialState());
   const [view, setView] = useState<View>("overview");
   const [weekIdInput, setWeekIdInput] = useState<WeekId>(getCurrentWeek());
   const [monthIdInput, setMonthIdInput] = useState<MonthId>(getCurrentMonth());
+
+  // NEW: Cleanup orphaned period data on app start
+  useEffect(() => {
+    const allClientIds = getAllClientIds(state);
+    cleanupClientLocalStorage(allClientIds);
+  }, [state]); // Run once on mount and when state changes
+
+  // NEW: Cleanup orphaned period data when clients are removed
+  useEffect(() => {
+    const allClientIds = getAllClientIds(state);
+    cleanupClientLocalStorage(allClientIds);
+  }, [state.staff, state]); // Run when staff/clients change
 
   // SaveBar hanterar nu auto-save med debounce
   // useEffect för saveState borttaget
@@ -1908,7 +3283,7 @@ export default function App() {
   const selectedClient = useMemo(() => {
     const s = selectedStaff;
     if (!s) return undefined;
-    return s.clients.find((c) => c.id === state.selectedClientId);
+    return s.clients.find((c) => c.id === state.selectedClientId && !c.archivedAt && !c.deletedAt);
   }, [selectedStaff, state.selectedClientId]);
 
   const kpis = useMemo((): Record<string, number> => {
@@ -1920,14 +3295,18 @@ export default function App() {
 
     state.staff.forEach(st => {
       st.clients.forEach(client => {
+        // Skip archived and soft-deleted clients
+        if (client.archivedAt || client.deletedAt) return;
+        
         totalClients += 1;
-        const cp = client.plan.carePlanDate;
-        if (!cp) {
+        
+        // Använd senaste planen för KPI-beräkning
+        const latest = latestPlan(client.plans);
+        if (!latest) {
           waitingPlan += 1;
         } else {
-          const due = addDaysISO(cp, 21);
-          if (!client.plan.hasGFP) {
-            if (today > due) delayedPlan += 1;
+          if (!latest.done) {
+            if (today > latest.dueDate) delayedPlan += 1;
             else waitingPlan += 1;
           } else {
             totalPlansActive += 1;
@@ -1962,7 +3341,7 @@ export default function App() {
 
   return (
     <div style={app}>
-      <aside style={sidebar}>
+      <aside style={sidebar} data-print-hide>
         <div style={{ fontWeight: 900, fontSize: 18, color: ui.text, marginBottom: 10 }}>Vårdadmin</div>
         {/* NEW: Updated navigation with proper contrast */}
         <button 
@@ -2092,6 +3471,29 @@ export default function App() {
         >
           Rapporter
         </button>
+        <button 
+          style={navItemStyle(view === "archive")} 
+          onClick={() => setView("archive")}
+          onMouseEnter={(e) => {
+            if (view !== "archive") {
+              e.currentTarget.style.background = ui.navHoverBg;
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (view !== "archive") {
+              e.currentTarget.style.background = 'transparent';
+            }
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.outline = `2px solid ${ui.blue}`;
+            e.currentTarget.style.outlineOffset = '2px';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.outline = 'none';
+          }}
+        >
+          Arkiv
+        </button>
         <div style={{ flex: 1 }} />
         <button 
           style={{ ...navItemStyle(false), color: ui.textMute }}
@@ -2117,22 +3519,64 @@ export default function App() {
         {view === "overview" && <Overview state={state} kpis={kpis} />}
         {view === "staff" && <StaffView state={state} setState={setState} selectedStaff={selectedStaff} setView={setView} />}
         {view === "staffDetail" && <StaffDetail state={state} selectedStaff={selectedStaff} />}
+        {view === "archive" && <ArchiveView state={state} setState={setState} />}
         {view === "client" && (
           <ClientWorkFull
             selectedClient={selectedClient}
-            savePlan={(u: Partial<Plan>) => {
+            savePlan={(u: Partial<Plan> | { plans: GFPPlan[] }) => {
               if (!selectedStaff || !selectedClient) return;
+              
+              // NEW: Write GFP plans to history
+              if ('plans' in u && u.plans) {
+                u.plans.forEach(plan => {
+                  upsertHistory({
+                    periodType: 'week', // GFP plans are tracked weekly
+                    periodId: getCurrentWeek(), // Use current week for GFP tracking
+                    staffId: selectedStaff.id,
+                    clientId: selectedClient.id,
+                    metric: 'gfp',
+                    status: plan.status,
+                    value: plan.done ? 1 : 0
+                  });
+                });
+              }
+              
               setState((prev) => ({
                 ...prev,
                 staff: prev.staff.map((s) =>
                   s.id === selectedStaff.id
-                    ? { ...s, clients: s.clients.map((c) => (c.id === selectedClient.id ? { ...c, plan: { ...c.plan, ...u } } : c)) }
+                    ? { 
+                        ...s, 
+                        clients: s.clients.map((c) => 
+                          c.id === selectedClient.id 
+                            ? { 
+                                ...c, 
+                                ...('plans' in u ? { plans: u.plans } : { plan: { ...c.plan, ...u } })
+                              } 
+                            : c
+                        ) 
+                      }
                     : s
                 )
               }));
             }}
             saveWeeklyDoc={(weekId: WeekId, payload: WeeklyDoc) => {
               if (!selectedStaff || !selectedClient) return;
+              // NEW: Save to period-based storage
+              savePeriodData(selectedClient.id, 'weekly', weekId, payload);
+              
+              // NEW: Write to history
+              const daysCount = Object.values(payload.days).filter(Boolean).length;
+              upsertHistory({
+                periodType: 'week',
+                periodId: weekId,
+                staffId: selectedStaff.id,
+                clientId: selectedClient.id,
+                metric: 'weekDoc',
+                status: payload.status,
+                value: daysCount
+              });
+              
               setState((prev) => ({
                 ...prev,
                 staff: prev.staff.map((s) =>
@@ -2144,6 +3588,20 @@ export default function App() {
             }}
             saveMonthlyReport={(monthId: MonthId, payload: MonthlyReport) => {
               if (!selectedStaff || !selectedClient) return;
+              // NEW: Save to period-based storage
+              savePeriodData(selectedClient.id, 'monthly', monthId, payload);
+              
+              // NEW: Write to history
+              upsertHistory({
+                periodType: 'month',
+                periodId: monthId,
+                staffId: selectedStaff.id,
+                clientId: selectedClient.id,
+                metric: 'monthReport',
+                status: payload.status,
+                value: payload.sent ? 1 : 0
+              });
+              
               setState((prev) => ({
                 ...prev,
                 staff: prev.staff.map((s) =>
@@ -2173,7 +3631,7 @@ export default function App() {
         {view === "reports" && <Reports state={state} />}
       </main>
       
-      <SaveBar state={state} />
+      <SaveBar state={state} data-print-hide />
     </div>
   );
 }

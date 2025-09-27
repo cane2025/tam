@@ -147,3 +147,40 @@ export function isValidWeekId(weekId: string): boolean {
 export function isValidMonthId(monthId: string): boolean {
   return /^\d{4}-\d{2}$/.test(monthId);
 }
+
+/**
+ * Hämta ISO veckonummer för ett datum
+ */
+export function getISOWeekNumber(date: Date): number {
+  const tempDate = new Date(date.getTime());
+  tempDate.setDate(tempDate.getDate() + 4 - (tempDate.getDay() || 7));
+  const yearStart = new Date(tempDate.getFullYear(), 0, 1);
+  return Math.ceil(((tempDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+/**
+ * Hämta ISO veckoår för ett datum
+ */
+export function getISOWeekYear(date: Date): number {
+  const thursday = new Date(date.getTime());
+  thursday.setDate(thursday.getDate() + 4 - (thursday.getDay() || 7));
+  return thursday.getFullYear();
+}
+
+/**
+ * Konvertera ISO vecka till datum (måndag i veckan)
+ */
+export function getWeekFromISO(isoWeek: string): Date {
+  const parts = isoWeek.split('-W');
+  const year = parseInt(parts[0] || '0', 10);
+  const week = parseInt(parts[1] || '0', 10);
+  
+  if (!year || !week) {
+    return new Date();
+  }
+  
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7;
+  const weekOne = new Date(jan4.getTime() - (dayOfWeek - 1) * 86400000);
+  return new Date(weekOne.getTime() + (week - 1) * 7 * 86400000);
+}

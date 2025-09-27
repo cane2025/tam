@@ -48,3 +48,15 @@ export declare function isValidWeekId(weekId: string): boolean;
  * Validera MonthId format
  */
 export declare function isValidMonthId(monthId: string): boolean;
+/**
+ * Hämta ISO veckonummer för ett datum
+ */
+export declare function getISOWeekNumber(date: Date): number;
+/**
+ * Hämta ISO veckoår för ett datum
+ */
+export declare function getISOWeekYear(date: Date): number;
+/**
+ * Konvertera ISO vecka till datum (måndag i veckan)
+ */
+export declare function getWeekFromISO(isoWeek: string): Date;

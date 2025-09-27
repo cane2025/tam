@@ -2,6 +2,7 @@ import React from 'react';
 import { Staff } from '../types';
 import { useStaffStats, WeeklyDocumentationStats } from '../hooks/useStaffStats';
 import { AppState } from '../types';
+import TuesdayAttendanceWidget from './TuesdayAttendanceWidget';
 
 interface StaffSummaryProps {
   staff: Staff;
@@ -29,7 +30,7 @@ function PersonalKpiCard({ title, value, subtitle, variant = 'info', icon }: Per
   const c = colors[variant];
   
   return (
-    <div style={{
+    <div className={`kpi-card kpi-${variant}`} style={{
       background: '#fff',
       border: '1px solid rgba(0,0,0,0.12)',
       borderRadius: 10,
@@ -81,7 +82,7 @@ function DocumentationChart({ weeklyStats }: DocumentationChartProps) {
   // Chart width calculation not needed for current layout
   
   return (
-    <div style={{
+    <div className="chart-container" style={{
       background: '#fff',
       border: '1px solid rgba(0,0,0,0.12)',
       borderRadius: 10,
@@ -258,6 +259,11 @@ function ProgressRing({ percentage, size = 120 }: ProgressRingProps) {
 export default function StaffSummary({ staff, state }: StaffSummaryProps) {
   const stats = useStaffStats(state, staff.id);
   
+  // PRINT NEW: Print funktion
+  const handlePrint = () => {
+    window.print();
+  };
+  
   if (!stats) {
     return (
       <div style={{
@@ -276,7 +282,26 @@ export default function StaffSummary({ staff, state }: StaffSummaryProps) {
   const { kpis, weeklyStats } = stats;
   
   return (
-    <div>
+    <div data-print-scope="personal-dashboard">
+      {/* PRINT NEW: Print-specifika rubriker (dolda i skärmläge) */}
+      <div className="print-only" style={{ marginBottom: 20, textAlign: 'center' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 8px 0' }}>
+          {staff.name}
+        </h1>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#374151', margin: '0 0 16px 0' }}>
+          Personal Dashboard
+        </h2>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 20 }}>
+          Genererad: {new Date().toLocaleString('sv-SE', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}
+        </div>
+      </div>
+
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -292,17 +317,53 @@ export default function StaffSummary({ staff, state }: StaffSummaryProps) {
             Personal Dashboard
           </div>
         </div>
-        <div style={{
-          fontSize: 12,
-          color: '#6b7280',
-          textAlign: 'right'
-        }}>
-          {kpis.totalClients} klienter
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            fontSize: 12,
+            color: '#6b7280',
+            textAlign: 'right'
+          }}>
+            {kpis.totalClients} klienter
+          </div>
+          {/* PRINT NEW: Skriv ut-knapp */}
+          <button
+            onClick={handlePrint}
+            data-print-hide
+            style={{
+              background: '#007aff',
+              color: '#ffffff',
+              border: '1px solid #007aff',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = '#0051d5';
+              e.currentTarget.style.borderColor = '#0051d5';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#007aff';
+              e.currentTarget.style.borderColor = '#007aff';
+            }}
+            aria-label="Skriv ut dashboard"
+          >
+            <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" 
+                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Skriv ut
+          </button>
         </div>
       </div>
       
       {/* KPI Cards Grid */}
-      <div style={{
+      <div className="kpi-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 12,
@@ -347,7 +408,7 @@ export default function StaffSummary({ staff, state }: StaffSummaryProps) {
       </div>
       
       {/* Dokumentationsgrad sektion */}
-      <div style={{
+      <div className="chart-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(300px, 2fr) minmax(200px, 1fr)',
         gap: 16,
@@ -357,7 +418,7 @@ export default function StaffSummary({ staff, state }: StaffSummaryProps) {
         <DocumentationChart weeklyStats={weeklyStats} />
         
         {/* Total dokumentationsgrad */}
-        <div style={{
+        <div className="chart-container" style={{
           background: '#fff',
           border: '1px solid rgba(0,0,0,0.12)',
           borderRadius: 10,
@@ -385,6 +446,20 @@ export default function StaffSummary({ staff, state }: StaffSummaryProps) {
             {stats.approvedDocuments} av {stats.totalDocuments} dokument godkända
           </div>
         </div>
+      </div>
+
+      {/* Tuesday Attendance Widget */}
+      <TuesdayAttendanceWidget staffId={staff.id} />
+
+      {/* PRINT NEW: Print-footer (dold i skärmläge) */}
+      <div className="print-footer print-only">
+        Genererad: {new Date().toLocaleString('sv-SE', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })} | Ungdomsstöd Dashboard
       </div>
     </div>
   );

@@ -170,3 +170,103 @@ export function clearAllData(): void {
   memoryStore.value = null;
   memoryStore.isMemoryMode = false;
 }
+
+// Tuesday Attendance Storage Functions
+const TUESDAY_ATTENDANCE_PREFIX = 'us:attTue:';
+
+/**
+ * Safe localStorage wrapper for Tuesday attendance
+ */
+function safeLocalStorage() {
+  return {
+    getItem: (key: string): string | null => {
+      try {
+        if (memoryStore.isMemoryMode) {
+          return memoryStore.value?.includes(key) ? memoryStore.value : null;
+        }
+        return localStorage.getItem(key);
+      } catch {
+        memoryStore.isMemoryMode = true;
+        return null;
+      }
+    },
+    setItem: (key: string, value: string): void => {
+      try {
+        if (memoryStore.isMemoryMode) {
+          // In memory mode, we can't store individual keys
+          return;
+        }
+        localStorage.setItem(key, value);
+      } catch {
+        memoryStore.isMemoryMode = true;
+      }
+    }
+  };
+}
+
+/**
+ * Load Tuesday attendance record
+ */
+export function loadTuesdayAttendance(staffId: string, weekId: string): Record<string, unknown> | null {
+  const storage = safeLocalStorage();
+  const key = `${TUESDAY_ATTENDANCE_PREFIX}${staffId}:${weekId}`;
+  const data = storage.getItem(key);
+  if (!data) return null;
+  try {
+    return JSON.parse(data) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save Tuesday attendance record with broadcast
+ */
+export function saveTuesdayAttendance(record: Record<string, unknown>): void {
+  const storage = safeLocalStorage();
+  const key = `${TUESDAY_ATTENDANCE_PREFIX}${record.staffId}:${record.weekId}`;
+  storage.setItem(key, JSON.stringify(record));
+  
+  // Broadcast update event for live updates  
+  window.dispatchEvent(new CustomEvent('us:attTue:changed', { 
+    detail: { weekId: record.weekId } 
+  }));
+}
+
+/**
+ * Get all staff IDs from storage
+ */
+export function getAllStaffIds(): string[] {
+  const data = getStoredData();
+  if (!data) return [];
+  try {
+    const state = JSON.parse(data) as { staff?: Array<{ id: string }> };
+    return state.staff?.map((s) => s.id) || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Aggregate Tuesday attendance for a week
+ */
+export function aggregateTuesdayAttendance(weekId: string): Record<string, number> {
+  const counts: Record<string, number> = {
+    unregistered: 0,
+    excused_absence: 0,
+    on_time: 0,
+    late: 0,
+    unexcused_absence: 0,
+  };
+  
+  const staffIds = getAllStaffIds();
+  staffIds.forEach(staffId => {
+    const record = loadTuesdayAttendance(staffId, weekId);
+    const status = (record?.status as string) || 'unregistered';
+    if (status in counts && counts[status] !== undefined) {
+      counts[status]++;
+    }
+  });
+  
+  return counts;
+}

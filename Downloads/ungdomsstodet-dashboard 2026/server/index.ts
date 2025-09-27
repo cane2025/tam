@@ -8,7 +8,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+// import bcrypt from 'bcryptjs'; // Not used in main server file
 import { initDatabase, closeDatabase } from './database/connection.js';
 import { idempotencyMiddleware } from './utils/idempotency.js';
 import { cleanupExpiredIdempotencyKeys } from './utils/idempotency.js';
@@ -21,6 +21,9 @@ import weeklyDocRoutes from './routes/weekly-docs.js';
 import monthlyReportRoutes from './routes/monthly-reports.js';
 import vismaTimeRoutes from './routes/visma-time.js';
 import dashboardRoutes from './routes/dashboard.js';
+import { initializeAuditRoutes } from './routes/audit-logs.js';
+import { initializeFeatureFlagRoutes } from './routes/feature-flags.js';
+import AuditLogger, { auditMiddleware } from './utils/audit-logger.js';
 import type { JwtPayload } from './types/database.js';
 
 const app = express();
@@ -28,14 +31,53 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Global audit logger instance
+let auditLogger: AuditLogger;
+
 // Development token for testing
 const DEV_TOKEN = 'dev-token-for-testing';
 
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable for development
-  crossOriginEmbedderPolicy: false
-}));
+// Middleware - Enhanced security headers
+const helmetConfig = NODE_ENV === 'production' 
+  ? {
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for React
+          styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
+          imgSrc: ["'self'", "data:", "blob:"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          formAction: ["'self'"],
+          baseUri: ["'self'"],
+          manifestSrc: ["'self'"]
+        }
+      },
+      crossOriginEmbedderPolicy: false, // Disable for compatibility
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true
+      },
+      xFrameOptions: { action: 'deny' },
+      xContentTypeOptions: true,
+      referrerPolicy: { policy: ['strict-origin-when-cross-origin'] },
+      permissionsPolicy: {
+        camera: [],
+        microphone: [],
+        geolocation: [],
+        payment: []
+      }
+    }
+  : {
+      contentSecurityPolicy: false, // Disable for development
+      crossOriginEmbedderPolicy: false
+    };
+
+app.use(helmet(helmetConfig));
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5175',
@@ -60,6 +102,8 @@ app.use('/api/', limiter);
 
 // Idempotency middleware
 app.use('/api/', idempotencyMiddleware());
+
+// Audit logging middleware (will be initialized after database connection)
 
 // Request logging in development
 if (NODE_ENV === 'development') {
@@ -146,13 +190,14 @@ app.use('/api/visma-time', authenticateToken, vismaTimeRoutes);
 app.use('/api/dashboard', authenticateToken, dashboardRoutes);
 
 // Admin routes
-app.use('/api/admin', authenticateToken, requireAdmin, (req, res) => {
+app.use('/api/admin', authenticateToken, requireAdmin, async (req, res) => {
+  const idempotencyModule = await import('./utils/idempotency.js');
   res.json({
     success: true,
     data: {
       message: 'Admin panel',
       stats: {
-        idempotency: require('./utils/idempotency.js').getIdempotencyStats(),
+        idempotency: idempotencyModule.getIdempotencyStats(),
         timezone: 'Europe/Stockholm',
         currentTime: nowInStockholm().toISOString()
       }
@@ -197,7 +242,21 @@ process.on('SIGTERM', () => {
 async function startServer() {
   try {
     // Initialize database
-    await initDatabase();
+    const db = await initDatabase();
+    
+    // Initialize audit logger
+    auditLogger = new AuditLogger(db);
+    
+    // Add audit middleware to API routes
+    app.use('/api/', auditMiddleware(auditLogger));
+    
+    // Initialize audit routes
+    const auditRoutes = initializeAuditRoutes(db);
+    app.use('/api/audit-logs', authenticateToken, auditRoutes);
+    
+    // Initialize feature flag routes
+    const featureRoutes = initializeFeatureFlagRoutes(db);
+    app.use('/api/feature-flags', authenticateToken, featureRoutes);
     
     // Clean up expired idempotency keys on startup
     cleanupExpiredIdempotencyKeys();

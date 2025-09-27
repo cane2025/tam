@@ -52,7 +52,7 @@ export function closeDatabase(): void {
 /**
  * Initialize database connection
  */
-export function initDatabase(): void {
+export function initDatabase(): Database.Database {
   try {
     const database = getDatabase();
     
@@ -63,6 +63,7 @@ export function initDatabase(): void {
     }
     
     console.log('✅ Database connected successfully');
+    return database;
     
   } catch (error) {
     console.error('❌ Database connection failed:', error);
