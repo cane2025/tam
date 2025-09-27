@@ -147,9 +147,68 @@ npm run build
 - **Tester:** Vitest
 - **API Tester:** Thunder Client
 
+## Säkerhet
+
+### Säkerhetsvalidering
+
+Kör automatiserade säkerhetstester för att verifiera att alla säkerhetsfixar fungerar:
+
+```bash
+npx tsx scripts/quick-security-check.ts
+```
+
+**Testade säkerhetsfunktioner:**
+- ✅ Security Headers (CSP, HSTS, X-Frame-Options)
+- ✅ Audit Logging (spårning av säkerhetsrelevanta händelser)
+- ✅ Feature Flags (säker funktionsutrullning)
+- ✅ API Endpoints (autentisering och behörighetskontroll)
+
+### Security Headers
+
+Följande säkerhetsheaders är aktiverade i produktion:
+
+- **Content Security Policy (CSP)**: Skyddar mot XSS-attacker
+- **HTTP Strict Transport Security (HSTS)**: Tvingar HTTPS-anslutningar
+- **X-Frame-Options**: Förhindrar clickjacking-attacker
+- **X-Content-Type-Options**: Förhindrar MIME-sniffing
+- **Referrer Policy**: Kontrollerar referrer-information
+- **Permissions Policy**: Begränsar tillgång till webbläsar-API:er
+
+### Audit Logging
+
+Alla säkerhetsrelevanta händelser loggas automatiskt:
+
+- Inloggningar och misslyckade inloggningsförsök
+- Användarhantering (skapande, uppdatering, borttagning)
+- Dataändringar (klienter, vårdplaner, dokumentation)
+- Admin-åtgärder och säkerhetsöverträdelser
+- API-anrop med metadata (IP, user agent, timestamp)
+
+**Admin-endpoints för audit logs:**
+- `GET /api/audit-logs` - Hämta audit logs med filtrering
+- `GET /api/audit-logs/stats` - Audit log-statistik
+- `GET /api/audit-logs/security-violations` - Säkerhetsöverträdelser
+- `GET /api/audit-logs/export` - Exportera audit logs som CSV
+
+### Feature Flags
+
+Säker utrullning av nya funktioner med feature flags:
+
+- Miljöspecifika inställningar (development/staging/production)
+- Procentuell rollout för gradvis aktivering
+- Användar- och rollbaserad targeting
+- Cache med 5-minuters TTL för prestanda
+- Admin-interface för hantering
+
+**Endpoints:**
+- `GET /api/feature-flags/evaluate/:flagName` - Utvärdera feature flag
+- `GET /api/feature-flags` - Hantera feature flags (admin)
+
 ## GDPR Compliance
 
 - Inga personnummer lagras
 - Klienter identifieras med initialer (t.ex. "AB", "CD")
 - Alla datum hanteras säkert i Stockholm tidszon
 - Automatisk backup och cleanup av gamla data
+- Fullständig audit trail för alla databehandlingar
+- Soft delete för "rätt att glömmas"-funktionalitet
