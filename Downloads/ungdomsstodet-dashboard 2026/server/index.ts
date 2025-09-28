@@ -38,46 +38,47 @@ let auditLogger: AuditLogger;
 const DEV_TOKEN = 'dev-token-for-testing';
 
 // Middleware - Enhanced security headers
-const helmetConfig = NODE_ENV === 'production' 
-  ? {
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for React
-          styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
-          imgSrc: ["'self'", "data:", "blob:"],
-          connectSrc: ["'self'"],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-          formAction: ["'self'"],
-          baseUri: ["'self'"],
-          manifestSrc: ["'self'"]
-        }
-      },
-      crossOriginEmbedderPolicy: false, // Disable for compatibility
-      hsts: {
-        maxAge: 31536000, // 1 year
-        includeSubDomains: true,
-        preload: true
-      },
-      xFrameOptions: { action: 'deny' },
-      xContentTypeOptions: true,
-      referrerPolicy: { policy: ['strict-origin-when-cross-origin'] },
-      permissionsPolicy: {
-        camera: [],
-        microphone: [],
-        geolocation: [],
-        payment: []
-      }
+const productionHelmetConfig = {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for React
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
+      manifestSrc: ["'self'"]
     }
-  : {
-      contentSecurityPolicy: false, // Disable for development
-      crossOriginEmbedderPolicy: false
-    };
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
+  xContentTypeOptions: true,
+  crossOriginEmbedderPolicy: false, // Disable for legacy integrations that rely on cross-origin embeds
+  xFrameOptions: { action: 'deny' as const }
+};
 
-app.use(helmet(helmetConfig));
+const developmentHelmetConfig = {
+  contentSecurityPolicy: false, // Disable CSP locally for DX
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
+  xContentTypeOptions: true,
+  crossOriginEmbedderPolicy: false
+};
+
+app.use(helmet(NODE_ENV === 'production' ? productionHelmetConfig : developmentHelmetConfig));
+
+app.use((_, res, next) => {
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5175',
@@ -283,6 +284,38 @@ async function startServer() {
 
 // Schedule cleanup of expired idempotency keys every hour
 setInterval(cleanupExpiredIdempotencyKeys, 60 * 60 * 1000);
+
+// Schedule GDPR-compliant audit log cleanup daily at 3:00 AM
+const scheduleAuditCleanup = () => {
+  const now = new Date();
+  const next3AM = new Date(now);
+  next3AM.setHours(3, 0, 0, 0);
+  
+  // If it's already past 3 AM today, schedule for tomorrow
+  if (now > next3AM) {
+    next3AM.setDate(next3AM.getDate() + 1);
+  }
+  
+  const msUntil3AM = next3AM.getTime() - now.getTime();
+  
+  setTimeout(() => {
+    // Run cleanup
+    if (auditLogger) {
+      auditLogger.cleanupOldAuditLogs();
+    }
+    
+    // Schedule daily cleanup
+    setInterval(() => {
+      if (auditLogger) {
+        auditLogger.cleanupOldAuditLogs();
+      }
+    }, 24 * 60 * 60 * 1000); // Daily
+  }, msUntil3AM);
+  
+  console.log(`🕒 GDPR audit cleanup scheduled for ${next3AM.toISOString()}`);
+};
+
+scheduleAuditCleanup();
 
 startServer();
 

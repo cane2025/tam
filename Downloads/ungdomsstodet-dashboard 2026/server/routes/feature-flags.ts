@@ -34,7 +34,7 @@ function requireAdmin(req: Request, res: Response, next: Function) {
 // Evaluate a feature flag for the current user
 router.get('/evaluate/:flagName', (req: Request, res: Response) => {
   try {
-    const { flagName } = req.params;
+    const { flagName } = req.params as { flagName: string };
     const user = (req as any).user as JwtPayload;
     const environment = process.env.NODE_ENV || 'development';
 
@@ -120,7 +120,7 @@ router.get('/', requireAdmin, (req: Request, res: Response) => {
 // Get a specific feature flag (admin only)
 router.get('/:flagName', requireAdmin, (req: Request, res: Response) => {
   try {
-    const { flagName } = req.params;
+    const { flagName } = req.params as { flagName: string };
     const flags = featureFlagManager.getAllFlags();
     const flag = flags.find(f => f.name === flagName);
 
@@ -210,7 +210,7 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
 // Update a feature flag (admin only)
 router.put('/:flagName', requireAdmin, (req: Request, res: Response) => {
   try {
-    const { flagName } = req.params;
+    const { flagName } = req.params as { flagName: string };
     const updates = req.body;
 
     // Remove fields that shouldn't be updated
@@ -245,7 +245,7 @@ router.put('/:flagName', requireAdmin, (req: Request, res: Response) => {
 // Delete a feature flag (admin only)
 router.delete('/:flagName', requireAdmin, (req: Request, res: Response) => {
   try {
-    const { flagName } = req.params;
+    const { flagName } = req.params as { flagName: string };
     const deleted = featureFlagManager.deleteFlag(flagName);
 
     if (!deleted) {

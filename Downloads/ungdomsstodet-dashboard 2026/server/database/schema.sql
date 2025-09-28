@@ -153,3 +153,36 @@ CREATE TRIGGER IF NOT EXISTS update_visma_time_updated_at
         UPDATE visma_time SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;
 
+-- GDPR-compliant audit logs table
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    actor_id TEXT NOT NULL, -- Anonymized user ID for GDPR compliance
+    actor_role TEXT NOT NULL, -- User role (not sensitive data)
+    action TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    resource_id TEXT,
+    details TEXT NOT NULL, -- JSON string with sanitized data
+    ip_address TEXT NOT NULL,
+    user_agent TEXT NOT NULL,
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    is_anonymized BOOLEAN DEFAULT 1, -- GDPR compliance flag
+    retention_days INTEGER DEFAULT 180, -- Data retention period
+    gdpr_compliant BOOLEAN DEFAULT 1 -- Overall GDPR compliance flag
+);
+
+-- Audit logs indexes for performance
+CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_gdpr ON audit_logs(gdpr_compliant);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_retention ON audit_logs(retention_days);
+
+-- For existing databases, add GDPR columns if they don't exist
+-- These are handled safely in the application code with try/catch
+-- ALTER TABLE audit_logs ADD COLUMN is_anonymized BOOLEAN DEFAULT 1;
+-- ALTER TABLE audit_logs ADD COLUMN retention_days INTEGER DEFAULT 180;
+-- ALTER TABLE audit_logs ADD COLUMN gdpr_compliant BOOLEAN DEFAULT 1;
+

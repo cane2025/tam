@@ -187,8 +187,8 @@ router.get('/export', requireAdmin, (req: Request, res: Response) => {
     // Generate CSV
     const headers = [
       'Timestamp',
-      'User ID',
-      'User Email',
+      'Actor ID (Anonymized)',
+      'Actor Role',
       'Action',
       'Resource',
       'Resource ID',
@@ -201,8 +201,8 @@ router.get('/export', requireAdmin, (req: Request, res: Response) => {
 
     const csvRows = logs.map(log => [
       log.timestamp,
-      log.userId,
-      log.userEmail,
+      log.actorId,
+      log.actorRole,
       log.action,
       log.resource,
       log.resourceId || '',
@@ -228,6 +228,62 @@ router.get('/export', requireAdmin, (req: Request, res: Response) => {
       success: false,
       error: 'Failed to export audit logs',
       message: 'An error occurred while exporting audit logs'
+    });
+  }
+});
+
+// GDPR Data Portability: Export user's own audit logs (anonymized)
+router.get('/gdpr-export/:userRole', async (req: Request, res: Response) => {
+  try {
+    const { userRole } = req.params;
+    const user = (req as any).user as JwtPayload;
+    
+    // Users can only export their own role's data, admins can export any role
+    if (user.role !== 'admin' && user.role !== userRole) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'You can only export your own audit data'
+      });
+    }
+
+    // Use the standalone GDPR export function
+    const { exportUserAuditLogs } = await import('../utils/audit-logger.js');
+    const logs = await exportUserAuditLogs(userRole);
+
+    const filename = `gdpr-audit-export-${userRole}-${new Date().toISOString().split('T')[0]}.json`;
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.json({
+      success: true,
+      message: 'GDPR audit data export',
+      userRole,
+      totalLogs: logs.length,
+      exportDate: new Date().toISOString(),
+      gdprCompliant: true,
+      anonymized: true,
+      data: logs
+    });
+
+    // Log the export action
+    if (auditLogger) {
+      await auditLogger.logEvent(
+        req,
+        res,
+        'DATA_EXPORT',
+        'audit_logs',
+        { exportType: 'gdpr', userRole, recordCount: logs.length },
+        undefined,
+        true
+      );
+    }
+  } catch (error) {
+    console.error('Failed to export GDPR audit logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export GDPR audit logs',
+      message: 'An error occurred while exporting your audit data'
     });
   }
 });

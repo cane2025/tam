@@ -4,7 +4,7 @@
  */
 
 import { Router } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { safeQueryOne, safeExecute } from '../database/connection.js';
@@ -13,8 +13,9 @@ import { nowInStockholm } from '../utils/timezone.js';
 import type { LoginRequest, AuthResponse, CreateUserRequest, User, JwtPayload } from '../types/database.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const JWT_SECRET: Secret = process.env.JWT_SECRET ?? 'dev-secret-key-change-in-production';
+const JWT_EXPIRES_IN: SignOptions['expiresIn'] = (process.env.JWT_EXPIRES_IN ?? '24h') as SignOptions['expiresIn'];
+const JWT_SIGN_OPTIONS: SignOptions = { expiresIn: JWT_EXPIRES_IN };
 
 /**
  * POST /api/auth/login
@@ -64,7 +65,7 @@ router.post('/login', async (req, res) => {
       role: user.role
     };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const token = jwt.sign(payload, JWT_SECRET, JWT_SIGN_OPTIONS);
 
     // Update last login
     safeExecute(
@@ -294,7 +295,7 @@ router.post('/refresh', async (req, res) => {
       role: user.role
     };
 
-    const newToken = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const newToken = jwt.sign(payload, JWT_SECRET, JWT_SIGN_OPTIONS);
 
     res.json({
       success: true,

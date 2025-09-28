@@ -161,14 +161,14 @@ class FeatureFlagManager {
           description: flag.description,
           enabled: Boolean(flag.enabled),
           rolloutPercentage: flag.rollout_percentage,
-          targetUsers: JSON.parse(flag.target_users || '[]'),
-          targetRoles: JSON.parse(flag.target_roles || '[]'),
-          environment: flag.environment,
+          targetUsers: JSON.parse(flag.target_users || '[]') as string[],
+          targetRoles: JSON.parse(flag.target_roles || '[]') as string[],
+          environment: flag.environment as FeatureFlag['environment'],
           createdBy: flag.created_by,
           createdAt: flag.created_at,
           updatedAt: flag.updated_at,
-          expiresAt: flag.expires_at,
-          metadata: JSON.parse(flag.metadata || '{}')
+          expiresAt: flag.expires_at ?? undefined,
+          metadata: JSON.parse(flag.metadata || '{}') as Record<string, unknown>
         };
         
         this.cache.set(flag.name, featureFlag);
@@ -218,14 +218,14 @@ class FeatureFlagManager {
         description: flag.description,
         enabled: Boolean(flag.enabled),
         rolloutPercentage: flag.rollout_percentage,
-        targetUsers: JSON.parse(flag.target_users || '[]'),
-        targetRoles: JSON.parse(flag.target_roles || '[]'),
-        environment: flag.environment,
+        targetUsers: JSON.parse(flag.target_users || '[]') as string[],
+        targetRoles: JSON.parse(flag.target_roles || '[]') as string[],
+        environment: flag.environment as FeatureFlag['environment'],
         createdBy: flag.created_by,
         createdAt: flag.created_at,
         updatedAt: flag.updated_at,
-        expiresAt: flag.expires_at,
-        metadata: JSON.parse(flag.metadata || '{}')
+        expiresAt: flag.expires_at ?? undefined,
+        metadata: JSON.parse(flag.metadata || '{}') as Record<string, unknown>
       };
 
       // Update cache

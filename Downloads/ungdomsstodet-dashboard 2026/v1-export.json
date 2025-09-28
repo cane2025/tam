@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "staff": [
+    {
+      "id": "staff-1",
+      "name": "Test Staff",
+      "email": "test@example.com",
+      "role": "staff"
+    },
+    {
+      "id": "admin-1", 
+      "name": "Test Admin",
+      "email": "admin@example.com",
+      "role": "admin"
+    }
+  ],
+  "clients": [
+    {
+      "id": "client-1",
+      "initials": "TC",
+      "name": "Test Client",
+      "staffId": "staff-1"
+    }
+  ],
+  "carePlans": [
+    {
+      "id": "plan-1",
+      "clientId": "client-1",
+      "carePlanDate": "2024-01-15",
+      "hasGfp": true,
+      "staffNotified": false,
+      "notes": "Test care plan"
+    }
+  ],
+  "weeklyDocs": [
+    {
+      "id": "doc-1",
+      "clientId": "client-1",
+      "weekId": "2024-W03",
+      "monday": true,
+      "tuesday": false,
+      "wednesday": true,
+      "thursday": false,
+      "friday": true,
+      "saturday": false,
+      "sunday": false,
+      "status": "pending"
+    }
+  ],
+  "monthlyReports": [
+    {
+      "id": "report-1",
+      "clientId": "client-1",
+      "monthId": "2024-01",
+      "sent": false,
+      "status": "pending"
+    }
+  ],
+  "vismaWeeks": [
+    {
+      "id": "visma-1",
+      "clientId": "client-1",
+      "weekId": "2024-W03",
+      "monday": true,
+      "tuesday": false,
+      "wednesday": true,
+      "thursday": false,
+      "friday": true,
+      "status": "pending"
+    }
+  ],
+  "selectedClientId": "client-1",
+  "selectedStaffId": "staff-1",
+  "view": "overview"
+}

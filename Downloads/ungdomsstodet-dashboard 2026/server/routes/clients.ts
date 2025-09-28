@@ -13,7 +13,11 @@ import type {
   CreateClientRequest, 
   ApiResponse, 
   PaginatedResponse,
-  JwtPayload 
+  JwtPayload,
+  CarePlan,
+  WeeklyDoc,
+  MonthlyReport,
+  VismaTime 
 } from '../types/database.js';
 
 const router = Router();
@@ -206,25 +210,25 @@ router.get('/:id', async (req, res) => {
     }
     
     // Get care plan
-    const carePlan = safeQueryOne(
+    const carePlan = safeQueryOne<CarePlan>(
       'SELECT * FROM care_plans WHERE client_id = ?',
       [id]
     );
     
     // Get weekly docs
-    const weeklyDocs = safeQuery(
+    const weeklyDocs = safeQuery<WeeklyDoc>(
       'SELECT * FROM weekly_docs WHERE client_id = ? ORDER BY week_id DESC',
       [id]
     );
     
     // Get monthly reports
-    const monthlyReports = safeQuery(
+    const monthlyReports = safeQuery<MonthlyReport>(
       'SELECT * FROM monthly_reports WHERE client_id = ? ORDER BY month_id DESC',
       [id]
     );
     
     // Get visma time
-    const vismaTime = safeQuery(
+    const vismaTime = safeQuery<VismaTime>(
       'SELECT * FROM visma_time WHERE client_id = ? ORDER BY week_id DESC',
       [id]
     );

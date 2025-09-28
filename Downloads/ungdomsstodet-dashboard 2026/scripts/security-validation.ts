@@ -8,15 +8,8 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { 
-  AuditLogger, 
-  auditMiddleware,
-  type AuditAction 
-} from '../server/utils/audit-logger.js';
-import { 
-  FeatureFlagManager,
-  type FeatureFlag 
-} from '../server/utils/feature-flags.js';
+import AuditLogger, { auditMiddleware, type AuditAction } from '../server/utils/audit-logger.js';
+import FeatureFlagManager, { type FeatureFlag } from '../server/utils/feature-flags.js';
 import { 
   generateIdempotencyKey,
   checkIdempotencyKey,
@@ -58,8 +51,8 @@ describe('Security Validation Suite', () => {
       const NODE_ENV = process.env.NODE_ENV;
       
       // Test CSP configuration from server/index.ts
-      const helmetConfig = NODE_ENV === 'production' 
-        ? {
+      const helmetConfig = NODE_ENV === 'production'
+        ? ({
             contentSecurityPolicy: {
               directives: {
                 defaultSrc: ["'self'"],
@@ -76,13 +69,16 @@ describe('Security Validation Suite', () => {
                 manifestSrc: ["'self'"]
               }
             }
-          }
-        : { contentSecurityPolicy: false };
+          } as const)
+        : ({ contentSecurityPolicy: false as const });
 
       // In production, we should NOT allow 'unsafe-inline' for scripts
       if (NODE_ENV === 'production') {
-        expect(helmetConfig.contentSecurityPolicy?.directives?.scriptSrc)
-          .not.toContain("'unsafe-inline'");
+        const cspConfig = helmetConfig.contentSecurityPolicy;
+        if (cspConfig && typeof cspConfig !== 'boolean') {
+          expect(cspConfig.directives?.scriptSrc)
+            .not.toContain("'unsafe-inline'");
+        }
       }
     });
 
@@ -184,7 +180,12 @@ describe('Security Validation Suite', () => {
       const logs = auditLogger.getAuditLogs({ limit: 1 });
       expect(logs).toHaveLength(1);
       
-      const loggedDetails = logs[0].details;
+      const [firstLog] = logs;
+      if (!firstLog) {
+        throw new Error('Expected audit log entry');
+      }
+
+      const loggedDetails = firstLog.details;
       expect(loggedDetails.password).toBe('[REDACTED]');
       expect(loggedDetails.password_hash).toBe('[REDACTED]');
       expect(loggedDetails.token).toBe('[REDACTED]');
@@ -217,7 +218,11 @@ describe('Security Validation Suite', () => {
       const violations = auditLogger.getSecurityViolations();
       expect(violations.length).toBeGreaterThan(0);
       
-      const violation = violations[0];
+      const [violation] = violations;
+      if (!violation) {
+        throw new Error('Expected security violation entry');
+      }
+
       expect(violation.action).toBe('SECURITY_VIOLATION');
       expect(violation.success).toBe(false);
       expect(violation.errorMessage).toBe('SQL injection attempt detected');
@@ -656,10 +661,13 @@ describe('Security Validation Suite', () => {
         try {
           // Simulate database error
           throw new Error('Database connection failed');
-        } catch (error) {
+        } catch (error: unknown) {
           // Should handle gracefully
-          expect(error instanceof Error).toBe(true);
-          expect(error.message).toBe('Database connection failed');
+          if (error instanceof Error) {
+            expect(error.message).toBe('Database connection failed');
+          } else {
+            throw error;
+          }
         }
       }).not.toThrow();
     });
