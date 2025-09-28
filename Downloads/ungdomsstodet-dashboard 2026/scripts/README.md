@@ -75,3 +75,122 @@ npx tsx scripts/quick-security-check.ts
 ```
 
 Om alla tester passerar (exit code 0), är säkerhetsfixarna verifierade.
+
+## Deployment Scripts
+
+### `deploy.sh`
+
+Huvudscript för automatiserad deployment till produktion.
+
+**Användning:**
+```bash
+# Fullständig deployment
+./scripts/deploy.sh
+
+# Dry run (visa vad som skulle göras)
+./scripts/deploy.sh --dry-run
+
+# Rollback till föregående version
+./scripts/deploy.sh --rollback
+
+# Visa hjälp
+./scripts/deploy.sh --help
+```
+
+**Funktioner:**
+- Automatisk backup före deployment
+- Stoppar och startar tjänster
+- Kör säkerhetsvalidering
+- Health checks efter deployment
+- Automatisk rollback vid fel
+- Detaljerad loggning
+
+### Hjälpscript
+
+**`backup.sh`** - Skapar backup av databas och konfiguration
+```bash
+./scripts/backup.sh
+```
+
+**`verify-env.sh`** - Validerar miljövariabler
+```bash
+./scripts/verify-env.sh
+```
+
+**`verify-db.sh`** - Kontrollerar databasintegritet
+```bash
+./scripts/verify-db.sh
+```
+
+**`test-db-connection.sh`** - Testar databasanslutning
+```bash
+./scripts/test-db-connection.sh
+```
+
+**`setup-services.sh`** - Installerar systemd-tjänster
+```bash
+sudo ./scripts/setup-services.sh
+```
+
+## Systemd Services
+
+### Installation
+```bash
+# Installera systemd-tjänster
+sudo ./scripts/setup-services.sh
+
+# Starta tjänster
+sudo systemctl start ungdomsstod-api
+sudo systemctl start ungdomsstod-frontend
+
+# Aktivera automatisk start
+sudo systemctl enable ungdomsstod-api
+sudo systemctl enable ungdomsstod-frontend
+```
+
+### Hantering
+```bash
+# Status
+sudo systemctl status ungdomsstod-api
+sudo systemctl status ungdomsstod-frontend
+
+# Loggar
+sudo journalctl -u ungdomsstod-api -f
+sudo journalctl -u ungdomsstod-frontend -f
+
+# Omstart
+sudo systemctl restart ungdomsstod-api
+sudo systemctl restart ungdomsstod-frontend
+```
+
+## Deployment Workflow
+
+### 1. Förberedelse
+```bash
+# Verifiera miljövariabler
+./scripts/verify-env.sh
+
+# Skapa backup
+./scripts/backup.sh
+```
+
+### 2. Deployment
+```bash
+# Kör fullständig deployment
+./scripts/deploy.sh
+```
+
+### 3. Validering
+```bash
+# Säkerhetstester
+npx tsx scripts/quick-security-check.ts
+
+# Health checks
+curl https://your-domain.com/api/health
+```
+
+### 4. Rollback (vid problem)
+```bash
+# Automatisk rollback
+./scripts/deploy.sh --rollback
+```
