@@ -12,7 +12,7 @@
  * - Automatisk backup med timestamp före migration
  */
 
-import * as Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -138,7 +138,7 @@ class V1ToV2Migrator {
 
   private async createBackup(): Promise<void> {
     const timestamp = new Date().toISOString().replace(/[:.-]/g, '').split('T')[0] + '_' + 
-                     new Date().toISOString().replace(/[:.-]/g, '').split('T')[1].substring(0, 6);
+                     new Date().toISOString().replace(/[:.-]/g, '').split('T')[1]?.substring(0, 6) || '000000';
     const backupPath = join(BACKUP_DIR, `database.backup.${timestamp}.db`);
     
     if (existsSync(DB_PATH)) {
@@ -164,12 +164,12 @@ class V1ToV2Migrator {
     };
 
     try {
-      counts.staff = this.db.prepare('SELECT COUNT(*) as count FROM users').get()?.count || 0;
-      counts.clients = this.db.prepare('SELECT COUNT(*) as count FROM clients').get()?.count || 0;
-      counts.carePlans = this.db.prepare('SELECT COUNT(*) as count FROM care_plans').get()?.count || 0;
-      counts.weeklyDocs = this.db.prepare('SELECT COUNT(*) as count FROM weekly_docs').get()?.count || 0;
-      counts.monthlyReports = this.db.prepare('SELECT COUNT(*) as count FROM monthly_reports').get()?.count || 0;
-      counts.vismaWeeks = this.db.prepare('SELECT COUNT(*) as count FROM visma_time').get()?.count || 0;
+      counts.staff = (this.db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number })?.count || 0;
+      counts.clients = (this.db.prepare('SELECT COUNT(*) as count FROM clients').get() as { count: number })?.count || 0;
+      counts.carePlans = (this.db.prepare('SELECT COUNT(*) as count FROM care_plans').get() as { count: number })?.count || 0;
+      counts.weeklyDocs = (this.db.prepare('SELECT COUNT(*) as count FROM weekly_docs').get() as { count: number })?.count || 0;
+      counts.monthlyReports = (this.db.prepare('SELECT COUNT(*) as count FROM monthly_reports').get() as { count: number })?.count || 0;
+      counts.vismaWeeks = (this.db.prepare('SELECT COUNT(*) as count FROM visma_time').get() as { count: number })?.count || 0;
     } catch (error) {
       this.log(`⚠️  Could not count existing records: ${error}`);
     }
@@ -212,34 +212,38 @@ class V1ToV2Migrator {
     return isValid;
   }
 
-  private validateV1Data(data: any): V1Data | null {
+  private validateV1Data(data: unknown): V1Data | null {
     try {
       // Basic structure validation
       if (!data || typeof data !== 'object') {
         throw new Error('Invalid data structure');
       }
 
-      if (!Array.isArray(data.staff)) {
+      const dataObj = data as Record<string, unknown>;
+
+      if (!Array.isArray(dataObj.staff)) {
         throw new Error('Staff data must be an array');
       }
 
-      if (!Array.isArray(data.clients)) {
+      if (!Array.isArray(dataObj.clients)) {
         throw new Error('Clients data must be an array');
       }
 
       // Validate required fields for staff
-      for (const staff of data.staff) {
-        if (!staff.id || !staff.name || !staff.email) {
+      for (const staff of dataObj.staff) {
+        const staffObj = staff as Record<string, unknown>;
+        if (!staffObj.id || !staffObj.name || !staffObj.email) {
           throw new Error(`Invalid staff record: ${JSON.stringify(staff)}`);
         }
-        if (!['admin', 'staff'].includes(staff.role)) {
-          staff.role = 'staff'; // Default fallback
+        if (!['admin', 'staff'].includes(staffObj.role as string)) {
+          (staffObj as Record<string, unknown>).role = 'staff'; // Default fallback
         }
       }
 
       // Validate required fields for clients
-      for (const client of data.clients) {
-        if (!client.id || !client.initials || !client.name || !client.staffId) {
+      for (const client of dataObj.clients) {
+        const clientObj = client as Record<string, unknown>;
+        if (!clientObj.id || !clientObj.initials || !clientObj.name || !clientObj.staffId) {
           throw new Error(`Invalid client record: ${JSON.stringify(client)}`);
         }
       }
@@ -677,7 +681,7 @@ async function main(): Promise<void> {
     const arg = args[i];
     if (arg === '--dry-run') {
       isDryRun = true;
-    } else if (!dataPath && !arg.startsWith('--')) {
+    } else if (!dataPath && arg && !arg.startsWith('--')) {
       dataPath = arg;
     }
   }

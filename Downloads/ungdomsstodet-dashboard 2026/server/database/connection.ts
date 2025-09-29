@@ -84,7 +84,7 @@ export function transaction<T>(callback: (db: Database.Database) => T): T {
  */
 export function safeQuery<T>(
   query: string,
-  params: any[] = []
+  params: (string | number | boolean | null)[] = []
 ): T[] {
   try {
     const database = getDatabase();
@@ -103,7 +103,7 @@ export function safeQuery<T>(
  */
 export function safeQueryOne<T>(
   query: string,
-  params: any[] = []
+  params: (string | number | boolean | null)[] = []
 ): T | null {
   try {
     const database = getDatabase();
@@ -122,7 +122,7 @@ export function safeQueryOne<T>(
  */
 export function safeExecute(
   query: string,
-  params: any[] = []
+  params: (string | number | boolean | null)[] = []
 ): Database.RunResult {
   try {
     const database = getDatabase();

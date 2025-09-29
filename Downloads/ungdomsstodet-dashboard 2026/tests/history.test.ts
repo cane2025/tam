@@ -10,10 +10,10 @@
  * 6. cleanup rör inte us:history
  */
 
-import { HistoryEntry, DocStatus } from '../src/types';
+import { HistoryEntry } from '../src/types';
 
 // Mock data för tester
-const mockHistoryEntry: HistoryEntry = {
+const _mockHistoryEntry: HistoryEntry = {
   id: 'history-1',
   periodType: 'week',
   periodId: '2024-W01',
@@ -104,7 +104,7 @@ describe('Historiska KPI', () => {
     const history: HistoryEntry[] = [];
     
     const upsertEntry = (entry: Omit<HistoryEntry, 'id' | 'ts'>) => {
-      const key = `${entry.periodType}:${entry.periodId}:${entry.staffId}:${entry.clientId}:${entry.metric}`;
+      const _key = `${entry.periodType}:${entry.periodId}:${entry.staffId}:${entry.clientId}:${entry.metric}`;
       const existingIndex = history.findIndex(h => 
         h.periodType === entry.periodType &&
         h.periodId === entry.periodId &&
@@ -169,7 +169,7 @@ describe('Historiska KPI', () => {
     ];
     
     // Simulera arkivering av klient (sätt archivedAt)
-    const archivedClient = {
+    const _archivedClient = {
       id: 'client-1',
       name: 'Test Klient',
       archivedAt: '2024-01-15T10:00:00.000Z'

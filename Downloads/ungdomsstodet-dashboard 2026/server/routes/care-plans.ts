@@ -6,7 +6,7 @@
 import express from 'express';
 import { getDb } from '../database/connection.js';
 import { nowInStockholm } from '../utils/timezone.js';
-import type { CarePlan, CreateCarePlanRequest, UpdateCarePlanRequest } from '../types/database.js';
+import type { CreateCarePlanRequest, UpdateCarePlanRequest } from '../types/database.js';
 
 const router = express.Router();
 

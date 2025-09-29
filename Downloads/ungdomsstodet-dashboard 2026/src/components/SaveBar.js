@@ -105,7 +105,7 @@ export default function SaveBar({ state, onSaveComplete }) {
             if (timeout)
                 clearTimeout(timeout);
         };
-    }, [state]); // Triggas när state ändras
+    }, [state, autoSaveTimeout, saveData]); // Triggas när state ändras
     // Cleanup timeout vid unmount
     useEffect(() => {
         return () => {

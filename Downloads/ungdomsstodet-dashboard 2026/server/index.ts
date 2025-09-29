@@ -159,7 +159,7 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = decoded;
     next();
-  } catch (error) {
+  } catch {
     return res.status(403).json({
       success: false,
       error: 'Invalid token',
@@ -207,7 +207,7 @@ app.use('/api/admin', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Error handling middleware
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Server error:', error);
   
   res.status(500).json({

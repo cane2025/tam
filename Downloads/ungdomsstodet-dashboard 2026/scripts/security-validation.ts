@@ -5,10 +5,8 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
 import { randomUUID } from 'crypto';
-import AuditLogger, { auditMiddleware, type AuditAction } from '../server/utils/audit-logger.js';
+import AuditLogger, { type AuditAction } from '../server/utils/audit-logger.js';
 import FeatureFlagManager, { type FeatureFlag } from '../server/utils/feature-flags.js';
 import { 
   generateIdempotencyKey,
@@ -17,7 +15,7 @@ import {
   cleanupExpiredIdempotencyKeys,
   getIdempotencyStats
 } from '../server/utils/idempotency.js';
-import { initDatabase, closeDatabase } from '../server/database/connection.js';
+// Database functions imported but not used in this test file
 import type { Request, Response } from 'express';
 
 // Test database path
@@ -426,7 +424,7 @@ describe('Security Validation Suite', () => {
       };
 
       // Validate referential integrity
-      const staffIds = new Set(testData.staff.map(s => s.id));
+      const _staffIds = new Set(testData.staff.map(s => s.id));
       const clientIds = new Set(testData.clients.map(c => c.id));
       
       const invalidCarePlans = testData.carePlans.filter(p => !clientIds.has(p.clientId));
@@ -450,7 +448,7 @@ describe('Security Validation Suite', () => {
         const backupData = { timestamp: new Date().toISOString(), attempt: i };
         
         // Check if migration is already in progress
-        const migrationLock = `migration_in_progress_${i}`;
+        const _migrationLock = `migration_in_progress_${i}`;
         
         // Simulate lock acquisition
         const lockAcquired = Math.random() > 0.3; // 70% success rate

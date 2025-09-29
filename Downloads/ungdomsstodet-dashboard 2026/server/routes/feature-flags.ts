@@ -5,7 +5,8 @@
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import FeatureFlagManager, { type FeatureFlag } from '../utils/feature-flags.js';
+import Database from 'better-sqlite3';
+import FeatureFlagManager from '../utils/feature-flags.js';
 import type { JwtPayload } from '../types/database.js';
 
 const router = Router();
@@ -13,14 +14,14 @@ const router = Router();
 // Get feature flag manager instance
 let featureFlagManager: FeatureFlagManager;
 
-export function initializeFeatureFlagRoutes(db: any) {
+export function initializeFeatureFlagRoutes(db: Database.Database) {
   featureFlagManager = new FeatureFlagManager(db);
   return router;
 }
 
 // Middleware to ensure user is admin
-function requireAdmin(req: Request, res: Response, next: Function) {
-  const user = (req as any).user as JwtPayload;
+function requireAdmin(req: Request, res: Response, next: () => void) {
+  const user = (req as { user?: JwtPayload }).user;
   if (user?.role !== 'admin') {
     return res.status(403).json({
       success: false,
@@ -35,7 +36,7 @@ function requireAdmin(req: Request, res: Response, next: Function) {
 router.get('/evaluate/:flagName', (req: Request, res: Response) => {
   try {
     const { flagName } = req.params as { flagName: string };
-    const user = (req as any).user as JwtPayload;
+    const user = (req as { user?: JwtPayload }).user;
     const environment = process.env.NODE_ENV || 'development';
 
     const evaluation = featureFlagManager.evaluateFlag(
@@ -63,7 +64,7 @@ router.get('/evaluate/:flagName', (req: Request, res: Response) => {
 router.post('/evaluate', (req: Request, res: Response) => {
   try {
     const { flagNames } = req.body;
-    const user = (req as any).user as JwtPayload;
+    const user = (req as { user?: JwtPayload }).user;
     const environment = process.env.NODE_ENV || 'development';
 
     if (!Array.isArray(flagNames)) {
@@ -149,7 +150,7 @@ router.get('/:flagName', requireAdmin, (req: Request, res: Response) => {
 // Create a new feature flag (admin only)
 router.post('/', requireAdmin, (req: Request, res: Response) => {
   try {
-    const user = (req as any).user as JwtPayload;
+    const user = (req as { user?: JwtPayload }).user;
     const {
       name,
       description,
@@ -188,7 +189,7 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
       targetUsers,
       targetRoles,
       environment,
-      createdBy: user.userId,
+      createdBy: user?.userId || 'unknown',
       expiresAt,
       metadata
     });

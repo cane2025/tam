@@ -7,7 +7,7 @@ import StaffSummary from "./components/StaffSummary";
 import GroupAttendanceWidget from "./components/GroupAttendanceWidget";
 
 // NEW: UI Tokens for consistent styling
-const UI_TOKENS = {
+const _UI_TOKENS = {
   colors: {
     primary: '#007aff',
     orange: '#ff9500',

@@ -3,8 +3,8 @@
  * Admin interface for managing feature flags
  */
 
-import React, { useState, useEffect } from 'react';
-import { useFeatureFlags } from '../hooks/useFeatureFlags';
+import React, { useState, useEffect, useCallback } from 'react';
+// useFeatureFlags not used in this component
 
 interface FeatureFlag {
   id: string;
@@ -19,7 +19,7 @@ interface FeatureFlag {
   createdAt: string;
   updatedAt: string;
   expiresAt?: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 interface FeatureFlagManagerProps {
@@ -34,10 +34,10 @@ const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFlag, setSelectedFlag] = useState<FeatureFlag | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [_selectedFlag, setSelectedFlag] = useState<FeatureFlag | null>(null);
+  const [_showCreateForm, setShowCreateForm] = useState(false);
 
-  const fetchFlags = async () => {
+  const fetchFlags = useCallback(async () => {
     if (!token) return;
 
     try {
@@ -64,7 +64,7 @@ const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl, token]);
 
   const updateFlag = async (flagName: string, updates: Partial<FeatureFlag>) => {
     if (!token) return;
@@ -100,7 +100,7 @@ const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({
 
   useEffect(() => {
     fetchFlags();
-  }, [token]);
+  }, [token, fetchFlags]);
 
   const toggleFlag = (flagName: string, enabled: boolean) => {
     updateFlag(flagName, { enabled });

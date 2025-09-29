@@ -211,8 +211,8 @@ export function saveTuesdayAttendance(record) {
     const storage = safeLocalStorage();
     const key = `${TUESDAY_ATTENDANCE_PREFIX}${record.staffId}:${record.weekId}`;
     storage.setItem(key, JSON.stringify(record));
-    // Broadcast update event for live updates
-    window.dispatchEvent(new CustomEvent('tuesdayAttendanceUpdate', {
+    // Broadcast update event for live updates  
+    window.dispatchEvent(new CustomEvent('us:attTue:changed', {
         detail: { weekId: record.weekId }
     }));
 }

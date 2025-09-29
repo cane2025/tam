@@ -11,7 +11,6 @@ import type {
   Client, 
   ClientWithRelations, 
   CreateClientRequest, 
-  ApiResponse, 
   PaginatedResponse,
   JwtPayload,
   CarePlan,
@@ -39,7 +38,7 @@ router.get('/', async (req, res) => {
       JOIN users u ON c.staff_id = u.id
       WHERE c.staff_id = ?
     `;
-    const params: any[] = [user.userId];
+    const params: (string | number)[] = [user.userId];
     
     if (search) {
       query += ` AND (c.name LIKE ? OR c.initials LIKE ?)`;
@@ -57,7 +56,7 @@ router.get('/', async (req, res) => {
       FROM clients c
       WHERE c.staff_id = ?
     `;
-    const countParams: any[] = [user.userId];
+    const countParams: (string | number)[] = [user.userId];
     
     if (search) {
       countQuery += ` AND (c.name LIKE ? OR c.initials LIKE ?)`;
@@ -115,16 +114,16 @@ router.get('/all', async (req, res) => {
       JOIN users u ON c.staff_id = u.id
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     if (staff_id) {
       query += ` AND c.staff_id = ?`;
-      params.push(staff_id);
+      params.push(String(staff_id));
     }
     
     if (search) {
       query += ` AND (c.name LIKE ? OR c.initials LIKE ? OR u.name LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      params.push(`%${String(search)}%`, `%${String(search)}%`, `%${String(search)}%`);
     }
     
     query += ` ORDER BY c.name ASC LIMIT ? OFFSET ?`;
@@ -139,16 +138,16 @@ router.get('/all', async (req, res) => {
       JOIN users u ON c.staff_id = u.id
       WHERE 1=1
     `;
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (staff_id) {
       countQuery += ` AND c.staff_id = ?`;
-      countParams.push(staff_id);
+      countParams.push(String(staff_id));
     }
     
     if (search) {
       countQuery += ` AND (c.name LIKE ? OR c.initials LIKE ? OR u.name LIKE ?)`;
-      countParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      countParams.push(`%${String(search)}%`, `%${String(search)}%`, `%${String(search)}%`);
     }
     
     const totalResult = safeQueryOne<{ total: number }>(countQuery, countParams);

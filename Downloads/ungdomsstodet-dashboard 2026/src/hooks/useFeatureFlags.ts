@@ -9,7 +9,7 @@ export interface FeatureFlagEvaluation {
   flagName: string;
   enabled: boolean;
   reason: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 interface FeatureFlagsState {
@@ -97,6 +97,8 @@ export function useFeatureFlags(
       const interval = setInterval(fetchFeatureFlags, refreshInterval);
       return () => clearInterval(interval);
     }
+    
+    return undefined;
   }, [fetchFeatureFlags, refreshInterval]);
 
   const isEnabled = useCallback((flagName: string): boolean => {

@@ -49,7 +49,7 @@ function mockRetentionSweep(cutoffDays: number, staff: TestStaff[]) {
   cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
   const cutoffISO = cutoffDate.toISOString();
   
-  const toRemove: Array<{ type: string; id: string; staffId: string; clientId?: string; data: any; deletedAt: string }> = [];
+  const toRemove: Array<{ type: string; id: string; staffId: string; clientId?: string; data: unknown; deletedAt: string }> = [];
   
   staff.forEach(staffMember => {
     staffMember.clients.forEach(client => {

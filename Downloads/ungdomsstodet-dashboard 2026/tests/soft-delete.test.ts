@@ -126,7 +126,7 @@ describe('Mjuk-radering via deletedAt', () => {
       name: 'Aktiv Klient'
     };
     
-    const softDeletedClient: Client = {
+    const _softDeletedClient: Client = {
       ...mockClient,
       id: 'client-2',
       name: 'Borttagen Klient',
@@ -208,7 +208,7 @@ describe('Mjuk-radering via deletedAt', () => {
     ];
     
     // Simulera mjuk-radering av klient
-    const softDeletedClient: Client = {
+    const _softDeletedClient: Client = {
       ...mockClient,
       id: 'client-1',
       name: 'Borttagen Klient',
@@ -234,7 +234,7 @@ describe('Mjuk-radering via deletedAt', () => {
 
   test('4. Återställning möjlig för soft-deleted poster (ta bort deletedAt)', () => {
     // Simulera mjuk-raderad klient
-    const softDeletedClient: Client = {
+    const _softDeletedClient: Client = {
       ...mockClient,
       id: 'client-1',
       name: 'Borttagen Klient',

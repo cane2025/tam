@@ -3,7 +3,7 @@
  * Handles Europe/Stockholm timezone for all date operations
  */
 
-import { format, parseISO, isValid, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parseISO, isValid, startOfWeek, endOfWeek, endOfMonth } from 'date-fns';
 import { zonedTimeToUtc, utcToZonedTime, format as formatTz } from 'date-fns-tz';
 
 export const STOCKHOLM_TIMEZONE = 'Europe/Stockholm';
@@ -90,7 +90,7 @@ export function parseWeekId(weekId: string): { start: Date; end: Date } | null {
       start: stockholmStart,
       end: stockholmEnd
     };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -120,7 +120,7 @@ export function parseMonthId(monthId: string): { start: Date; end: Date } | null
       start: stockholmStart,
       end: stockholmEnd
     };
-  } catch (error) {
+  } catch {
     return null;
   }
 }

@@ -5,6 +5,44 @@ import { getCurrentWeek, getCurrentMonth, addWeeks, addMonths, addDaysISO, today
 import SaveBar from "./components/SaveBar";
 import StaffSummary from "./components/StaffSummary";
 import GroupAttendanceWidget from "./components/GroupAttendanceWidget";
+// NEW: UI Tokens for consistent styling
+const _UI_TOKENS = {
+    colors: {
+        primary: '#007aff',
+        orange: '#ff9500',
+        red: '#ff3b30',
+        green: '#16a34a',
+        textPrimary: '#111111',
+        textSecondary: '#374151',
+        border: 'rgba(0,0,0,0.12)',
+        sidebarActive: '#e9f2ff'
+    },
+    inputBase: {
+        padding: '8px 12px',
+        border: '1px solid rgba(0,0,0,0.12)',
+        borderRadius: '6px',
+        fontSize: '14px',
+        backgroundColor: '#ffffff',
+        color: '#111111'
+    },
+    selectBase: {
+        padding: '8px 12px',
+        border: '1px solid rgba(0,0,0,0.12)',
+        borderRadius: '6px',
+        fontSize: '14px',
+        backgroundColor: '#ffffff',
+        color: '#111111'
+    },
+    textareaBase: {
+        padding: '8px 12px',
+        border: '1px solid rgba(0,0,0,0.12)',
+        borderRadius: '6px',
+        fontSize: '14px',
+        backgroundColor: '#ffffff',
+        color: '#111111',
+        resize: 'vertical'
+    }
+};
 // NEW: Central status label mapping
 const STATUS_LABEL = {
     approved: 'Godkänd',

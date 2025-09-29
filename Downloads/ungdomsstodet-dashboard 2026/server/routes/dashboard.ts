@@ -10,7 +10,6 @@ import type {
   KPIMetrics, 
   WeeklyStats, 
   MonthlyStats, 
-  ApiResponse, 
   JwtPayload 
 } from '../types/database.js';
 
@@ -25,7 +24,7 @@ router.get('/kpis', async (req, res) => {
     const user = req.user as JwtPayload;
     const currentWeek = getCurrentWeekId();
     const currentMonth = getCurrentMonthId();
-    const today = nowInStockholm().toISOString().split('T')[0];
+    const today = nowInStockholm().toISOString().split('T')[0] as string;
     
     let kpis: KPIMetrics;
     
@@ -186,7 +185,7 @@ router.get('/weekly-stats', async (req, res) => {
     const limit = Math.min(Number(weeks), 52); // Max 52 weeks
     
     let query: string;
-    let params: any[];
+    let params: (string | number)[];
     
     if (user.role === 'admin') {
       query = `
@@ -261,7 +260,7 @@ router.get('/monthly-stats', async (req, res) => {
     const limit = Math.min(Number(months), 24); // Max 24 months
     
     let query: string;
-    let params: any[];
+    let params: (string | number)[];
     
     if (user.role === 'admin') {
       query = `
@@ -335,7 +334,7 @@ router.get('/recent-activity', async (req, res) => {
     const { limit = 20 } = req.query;
     
     let query: string;
-    let params: any[];
+    let params: (string | number)[];
     
     if (user.role === 'admin') {
       query = `
@@ -448,10 +447,10 @@ router.get('/overdue-items', async (req, res) => {
     const user = req.user as JwtPayload;
     const currentWeek = getCurrentWeekId();
     const currentMonth = getCurrentMonthId();
-    const today = nowInStockholm().toISOString().split('T')[0];
+    const today = nowInStockholm().toISOString().split('T')[0] as string;
     
     let query: string;
-    let params: any[];
+    let params: (string | number)[];
     
     if (user.role === 'admin') {
       query = `

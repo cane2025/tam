@@ -1,1 +1,1 @@
-export declare const debugLog: (component: string, data: any) => void;
+export declare const debugLog: (component: string, data: unknown) => void;

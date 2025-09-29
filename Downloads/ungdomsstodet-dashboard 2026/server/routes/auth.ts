@@ -8,7 +8,7 @@ import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { safeQueryOne, safeExecute } from '../database/connection.js';
-import { generateIdempotencyKey } from '../utils/idempotency.js';
+// Idempotency key generation not used in this file
 import { nowInStockholm } from '../utils/timezone.js';
 import type { LoginRequest, AuthResponse, CreateUserRequest, User, JwtPayload } from '../types/database.js';
 

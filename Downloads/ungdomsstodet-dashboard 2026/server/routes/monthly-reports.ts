@@ -10,8 +10,6 @@ import { nowInStockholm, isValidMonthId } from '../utils/timezone.js';
 import type { 
   MonthlyReport, 
   CreateMonthlyReportRequest, 
-  ApiResponse, 
-  PaginatedResponse, 
   JwtPayload 
 } from '../types/database.js';
 
@@ -34,21 +32,21 @@ router.get('/', async (req, res) => {
       JOIN users u ON c.staff_id = u.id
       WHERE c.staff_id = ?
     `;
-    const params: any[] = [user.userId];
+    const params: (string | number)[] = [user.userId];
     
     if (client_id) {
       query += ` AND mr.client_id = ?`;
-      params.push(client_id);
+      params.push(String(client_id));
     }
     
     if (month_id) {
       query += ` AND mr.month_id = ?`;
-      params.push(month_id);
+      params.push(String(month_id));
     }
     
     if (search) {
       query += ` AND (c.name LIKE ? OR c.initials LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`);
+      params.push(`%${String(search)}%`, `%${String(search)}%`);
     }
     
     query += ` ORDER BY mr.month_id DESC, c.name ASC LIMIT ? OFFSET ?`;
@@ -67,21 +65,21 @@ router.get('/', async (req, res) => {
       JOIN clients c ON mr.client_id = c.id
       WHERE c.staff_id = ?
     `;
-    const countParams: any[] = [user.userId];
+    const countParams: (string | number)[] = [user.userId];
     
     if (client_id) {
       countQuery += ` AND mr.client_id = ?`;
-      countParams.push(client_id);
+      countParams.push(String(client_id));
     }
     
     if (month_id) {
       countQuery += ` AND mr.month_id = ?`;
-      countParams.push(month_id);
+      countParams.push(String(month_id));
     }
     
     if (search) {
       countQuery += ` AND (c.name LIKE ? OR c.initials LIKE ?)`;
-      countParams.push(`%${search}%`, `%${search}%`);
+      countParams.push(`%${String(search)}%`, `%${String(search)}%`);
     }
     
     const totalResult = safeQueryOne<{ total: number }>(countQuery, countParams);
@@ -134,26 +132,26 @@ router.get('/all', async (req, res) => {
       JOIN users u ON c.staff_id = u.id
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     if (client_id) {
       query += ` AND mr.client_id = ?`;
-      params.push(client_id);
+      params.push(String(client_id));
     }
     
     if (month_id) {
       query += ` AND mr.month_id = ?`;
-      params.push(month_id);
+      params.push(String(month_id));
     }
     
     if (staff_id) {
       query += ` AND c.staff_id = ?`;
-      params.push(staff_id);
+      params.push(String(staff_id));
     }
     
     if (search) {
       query += ` AND (c.name LIKE ? OR c.initials LIKE ? OR u.name LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      params.push(`%${String(search)}%`, `%${String(search)}%`, `%${String(search)}%`);
     }
     
     query += ` ORDER BY mr.month_id DESC, c.name ASC LIMIT ? OFFSET ?`;
@@ -172,26 +170,26 @@ router.get('/all', async (req, res) => {
       JOIN clients c ON mr.client_id = c.id
       WHERE 1=1
     `;
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (client_id) {
       countQuery += ` AND mr.client_id = ?`;
-      countParams.push(client_id);
+      countParams.push(String(client_id));
     }
     
     if (month_id) {
       countQuery += ` AND mr.month_id = ?`;
-      countParams.push(month_id);
+      countParams.push(String(month_id));
     }
     
     if (staff_id) {
       countQuery += ` AND c.staff_id = ?`;
-      countParams.push(staff_id);
+      countParams.push(String(staff_id));
     }
     
     if (search) {
       countQuery += ` AND (c.name LIKE ? OR c.initials LIKE ? OR u.name LIKE ?)`;
-      countParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      countParams.push(`%${String(search)}%`, `%${String(search)}%`, `%${String(search)}%`);
     }
     
     const totalResult = safeQueryOne<{ total: number }>(countQuery, countParams);
@@ -445,11 +443,11 @@ router.put('/:id', async (req, res) => {
     
     // Build update query
     const updates: string[] = [];
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     if (month_id !== undefined) {
       updates.push('month_id = ?');
-      params.push(month_id);
+      params.push(String(month_id));
     }
     
     if (sent !== undefined) {

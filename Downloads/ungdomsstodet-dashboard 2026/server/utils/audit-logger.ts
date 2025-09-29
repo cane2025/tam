@@ -137,32 +137,32 @@ class AuditLogger {
     // Add GDPR columns to existing table if they don't exist
     try {
       this.db.exec(`ALTER TABLE audit_logs ADD COLUMN is_anonymized BOOLEAN DEFAULT 1`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
     
     try {
       this.db.exec(`ALTER TABLE audit_logs ADD COLUMN retention_days INTEGER DEFAULT 180`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
     
     try {
       this.db.exec(`ALTER TABLE audit_logs ADD COLUMN gdpr_compliant BOOLEAN DEFAULT 1`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
     // Add new GDPR-compliant columns if they don't exist
     try {
       this.db.exec(`ALTER TABLE audit_logs ADD COLUMN actor_id TEXT`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
     
     try {
       this.db.exec(`ALTER TABLE audit_logs ADD COLUMN actor_role TEXT`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
@@ -317,7 +317,7 @@ class AuditLogger {
   ): AuditEvent[] {
     try {
       let query = 'SELECT * FROM audit_logs WHERE 1=1';
-      const params: any[] = [];
+      const params: (string | number | boolean)[] = [];
 
       if (filters.actorId) {
         query += ' AND actor_id = ?';
@@ -573,7 +573,7 @@ import { getDatabase } from '../database/connection.js';
  * GDPR Data Portability: Export user audit logs in anonymized format
  * Returns only anonymized data for compliance with GDPR Article 20
  */
-export async function exportUserAuditLogs(userRole: string): Promise<any[]> {
+export async function exportUserAuditLogs(userRole: string): Promise<AuditEvent[]> {
   try {
     const db = getDatabase();
     
@@ -587,7 +587,7 @@ export async function exportUserAuditLogs(userRole: string): Promise<any[]> {
     `).all(userRole);
     
     console.log(`📤 [GDPR Export] Exported ${logs.length} audit logs for role: ${userRole}`);
-    return logs;
+    return logs as AuditEvent[];
   } catch (error) {
     console.error('❌ [GDPR Export] Failed to export user audit logs:', error);
     return [];

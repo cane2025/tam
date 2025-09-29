@@ -5,8 +5,8 @@
 
 import express from 'express';
 import { getDb } from '../database/connection.js';
-import { nowInStockholm, getCurrentWeekId } from '../utils/timezone.js';
-import type { WeeklyDoc, CreateWeeklyDocRequest, UpdateWeeklyDocRequest } from '../types/database.js';
+import { nowInStockholm } from '../utils/timezone.js';
+import type { CreateWeeklyDocRequest, UpdateWeeklyDocRequest } from '../types/database.js';
 
 const router = express.Router();
 

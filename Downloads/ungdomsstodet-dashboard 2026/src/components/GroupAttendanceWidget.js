@@ -41,9 +41,9 @@ const GroupAttendanceWidget = () => {
                 loadData();
             }
         };
-        window.addEventListener('tuesdayAttendanceUpdate', handleUpdate);
+        window.addEventListener('us:attTue:changed', handleUpdate);
         return () => {
-            window.removeEventListener('tuesdayAttendanceUpdate', handleUpdate);
+            window.removeEventListener('us:attTue:changed', handleUpdate);
         };
     }, [selectedWeek, loadData]);
     // Navigate weeks with proper ISO handling

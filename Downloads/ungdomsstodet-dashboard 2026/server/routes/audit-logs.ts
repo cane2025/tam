@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import Database from 'better-sqlite3';
 import AuditLogger, { type AuditAction } from '../utils/audit-logger.js';
 import type { JwtPayload } from '../types/database.js';
 
@@ -13,7 +14,7 @@ const router = Router();
 // Get audit logger instance
 let auditLogger: AuditLogger;
 
-export function initializeAuditRoutes(db: any) {
+export function initializeAuditRoutes(db: Database.Database) {
   auditLogger = new AuditLogger(db);
   return router;
 }
@@ -21,8 +22,8 @@ export function initializeAuditRoutes(db: any) {
 export { auditLogger };
 
 // Middleware to ensure user is admin
-function requireAdmin(req: Request, res: Response, next: Function) {
-  const user = (req as any).user as JwtPayload;
+function requireAdmin(req: Request, res: Response, next: () => void) {
+  const user = (req as { user?: JwtPayload }).user;
   if (user?.role !== 'admin') {
     return res.status(403).json({
       success: false,
@@ -236,10 +237,10 @@ router.get('/export', requireAdmin, (req: Request, res: Response) => {
 router.get('/gdpr-export/:userRole', async (req: Request, res: Response) => {
   try {
     const { userRole } = req.params;
-    const user = (req as any).user as JwtPayload;
+    const user = (req as { user?: JwtPayload }).user;
     
     // Users can only export their own role's data, admins can export any role
-    if (user.role !== 'admin' && user.role !== userRole) {
+    if (user?.role !== 'admin' && user?.role !== userRole) {
       return res.status(403).json({
         success: false,
         error: 'Unauthorized',
@@ -249,7 +250,7 @@ router.get('/gdpr-export/:userRole', async (req: Request, res: Response) => {
 
     // Use the standalone GDPR export function
     const { exportUserAuditLogs } = await import('../utils/audit-logger.js');
-    const logs = await exportUserAuditLogs(userRole);
+    const logs = await exportUserAuditLogs(userRole || 'unknown');
 
     const filename = `gdpr-audit-export-${userRole}-${new Date().toISOString().split('T')[0]}.json`;
 

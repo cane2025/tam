@@ -42,7 +42,7 @@ const mockStaff: Staff = {
   clients: [mockClient]
 };
 
-const mockState: AppState = {
+const _mockState: AppState = {
   staff: [mockStaff],
   selectedStaffId: undefined,
   selectedClientId: undefined,
