@@ -8,7 +8,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+// import bcrypt from 'bcryptjs'; // Not used in main server file
 import { initDatabase, closeDatabase } from './database/connection.js';
 import { idempotencyMiddleware } from './utils/idempotency.js';
 import { cleanupExpiredIdempotencyKeys } from './utils/idempotency.js';
@@ -21,6 +21,9 @@ import weeklyDocRoutes from './routes/weekly-docs.js';
 import monthlyReportRoutes from './routes/monthly-reports.js';
 import vismaTimeRoutes from './routes/visma-time.js';
 import dashboardRoutes from './routes/dashboard.js';
+import { initializeAuditRoutes } from './routes/audit-logs.js';
+import { initializeFeatureFlagRoutes } from './routes/feature-flags.js';
+import AuditLogger, { auditMiddleware } from './utils/audit-logger.js';
 import type { JwtPayload } from './types/database.js';
 
 const app = express();
@@ -28,14 +31,54 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Global audit logger instance
+let auditLogger: AuditLogger;
+
 // Development token for testing
 const DEV_TOKEN = 'dev-token-for-testing';
 
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable for development
+// Middleware - Enhanced security headers
+const productionHelmetConfig = {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for React
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
+      manifestSrc: ["'self'"]
+    }
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
+  xContentTypeOptions: true,
+  crossOriginEmbedderPolicy: false, // Disable for legacy integrations that rely on cross-origin embeds
+  xFrameOptions: { action: 'deny' as const }
+};
+
+const developmentHelmetConfig = {
+  contentSecurityPolicy: false, // Disable CSP locally for DX
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
+  xContentTypeOptions: true,
   crossOriginEmbedderPolicy: false
-}));
+};
+
+app.use(helmet(NODE_ENV === 'production' ? productionHelmetConfig : developmentHelmetConfig));
+
+app.use((_, res, next) => {
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5175',
@@ -60,6 +103,8 @@ app.use('/api/', limiter);
 
 // Idempotency middleware
 app.use('/api/', idempotencyMiddleware());
+
+// Audit logging middleware (will be initialized after database connection)
 
 // Request logging in development
 if (NODE_ENV === 'development') {
@@ -114,7 +159,7 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = decoded;
     next();
-  } catch (error) {
+  } catch {
     return res.status(403).json({
       success: false,
       error: 'Invalid token',
@@ -146,13 +191,14 @@ app.use('/api/visma-time', authenticateToken, vismaTimeRoutes);
 app.use('/api/dashboard', authenticateToken, dashboardRoutes);
 
 // Admin routes
-app.use('/api/admin', authenticateToken, requireAdmin, (req, res) => {
+app.use('/api/admin', authenticateToken, requireAdmin, async (req, res) => {
+  const idempotencyModule = await import('./utils/idempotency.js');
   res.json({
     success: true,
     data: {
       message: 'Admin panel',
       stats: {
-        idempotency: require('./utils/idempotency.js').getIdempotencyStats(),
+        idempotency: idempotencyModule.getIdempotencyStats(),
         timezone: 'Europe/Stockholm',
         currentTime: nowInStockholm().toISOString()
       }
@@ -161,7 +207,7 @@ app.use('/api/admin', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Error handling middleware
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Server error:', error);
   
   res.status(500).json({
@@ -197,7 +243,21 @@ process.on('SIGTERM', () => {
 async function startServer() {
   try {
     // Initialize database
-    await initDatabase();
+    const db = await initDatabase();
+    
+    // Initialize audit logger
+    auditLogger = new AuditLogger(db);
+    
+    // Add audit middleware to API routes
+    app.use('/api/', auditMiddleware(auditLogger));
+    
+    // Initialize audit routes
+    const auditRoutes = initializeAuditRoutes(db);
+    app.use('/api/audit-logs', authenticateToken, auditRoutes);
+    
+    // Initialize feature flag routes
+    const featureRoutes = initializeFeatureFlagRoutes(db);
+    app.use('/api/feature-flags', authenticateToken, featureRoutes);
     
     // Clean up expired idempotency keys on startup
     cleanupExpiredIdempotencyKeys();
@@ -224,6 +284,38 @@ async function startServer() {
 
 // Schedule cleanup of expired idempotency keys every hour
 setInterval(cleanupExpiredIdempotencyKeys, 60 * 60 * 1000);
+
+// Schedule GDPR-compliant audit log cleanup daily at 3:00 AM
+const scheduleAuditCleanup = () => {
+  const now = new Date();
+  const next3AM = new Date(now);
+  next3AM.setHours(3, 0, 0, 0);
+  
+  // If it's already past 3 AM today, schedule for tomorrow
+  if (now > next3AM) {
+    next3AM.setDate(next3AM.getDate() + 1);
+  }
+  
+  const msUntil3AM = next3AM.getTime() - now.getTime();
+  
+  setTimeout(() => {
+    // Run cleanup
+    if (auditLogger) {
+      auditLogger.cleanupOldAuditLogs();
+    }
+    
+    // Schedule daily cleanup
+    setInterval(() => {
+      if (auditLogger) {
+        auditLogger.cleanupOldAuditLogs();
+      }
+    }, 24 * 60 * 60 * 1000); // Daily
+  }, msUntil3AM);
+  
+  console.log(`🕒 GDPR audit cleanup scheduled for ${next3AM.toISOString()}`);
+};
+
+scheduleAuditCleanup();
 
 startServer();
 

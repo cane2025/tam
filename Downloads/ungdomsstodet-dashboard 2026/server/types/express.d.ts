@@ -2,7 +2,7 @@
  * Express TypeScript declarations
  */
 
-import { Request } from 'express';
+// Request type imported for global declaration
 
 declare global {
   namespace Express {
@@ -19,6 +19,10 @@ declare global {
 }
 
 export {};
+
+
+
+
 
 
 

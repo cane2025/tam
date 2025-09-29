@@ -53,22 +53,26 @@ export default function SimpleAuth() {
     return (
       <div>
         <App />
-        <div style={{
+        {/* NEW: Professional login status card */}
+        <div data-print-keep style={{
           position: 'fixed',
-          top: '10px',
-          right: '10px',
-          zIndex: 1000,
+          top: '16px',
+          right: '16px',
+          zIndex: 10001,
+          background: '#ffffff',
+          border: '2px solid #ff0000', // DEBUG: Röd border för att se elementet
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          padding: '12px 16px',
           display: 'flex',
-          gap: '10px',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: '12px',
+          minWidth: '280px'
         }}>
           <span style={{ 
             fontSize: '14px', 
             color: '#666',
-            background: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            border: '1px solid #ddd'
+            flex: 1
           }}>
             Inloggad som: {JSON.parse(localStorage.getItem('simpleAuth_user') || '{}').username}
           </span>
@@ -78,10 +82,18 @@ export default function SimpleAuth() {
               background: '#ff3b30',
               color: 'white',
               border: 'none',
-              padding: '8px 12px',
+              padding: '8px 16px',
               borderRadius: '6px',
-              fontSize: '12px',
-              cursor: 'pointer'
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#e6342a';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ff3b30';
             }}
           >
             Logga ut

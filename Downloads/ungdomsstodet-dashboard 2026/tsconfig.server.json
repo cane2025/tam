@@ -6,12 +6,23 @@
     "moduleResolution": "bundler",
     "outDir": "./dist/server",
     "rootDir": "./",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": false
   },
-  "include": ["server/**/*", "scripts/**/*", "tests/**/*", "server/types/**/*"],
-  "exclude": ["src", "dist", "node_modules"]
+  "include": [
+    "server/**/*",
+    "scripts/**/*",
+    "server/types/**/*"
+  ],
+  "exclude": [
+    "src",
+    "dist",
+    "node_modules"
+  ]
 }

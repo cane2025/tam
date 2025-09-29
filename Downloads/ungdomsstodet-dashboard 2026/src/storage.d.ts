@@ -29,3 +29,19 @@ export declare function restoreFromBackup(backupKey: string): string | null;
  * Rensa all data (både localStorage och memory)
  */
 export declare function clearAllData(): void;
+/**
+ * Load Tuesday attendance record
+ */
+export declare function loadTuesdayAttendance(staffId: string, weekId: string): Record<string, unknown> | null;
+/**
+ * Save Tuesday attendance record with broadcast
+ */
+export declare function saveTuesdayAttendance(record: Record<string, unknown>): void;
+/**
+ * Get all staff IDs from storage
+ */
+export declare function getAllStaffIds(): string[];
+/**
+ * Aggregate Tuesday attendance for a week
+ */
+export declare function aggregateTuesdayAttendance(weekId: string): Record<string, number>;

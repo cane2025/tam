@@ -3,7 +3,7 @@
  * Tests for API idempotency functionality
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { 
   generateIdempotencyKey,
   generateRequestHash,
@@ -148,7 +148,7 @@ describe('Idempotency Utilities', () => {
       cleanupExpiredIdempotencyKeys();
       
       // The key should not be retrievable after cleanup
-      const result = checkIdempotencyKey(expiredKey);
+      const _result = checkIdempotencyKey(expiredKey);
       // Note: This test might pass or fail depending on timing
       // The important thing is that cleanup doesn't throw errors
     });
@@ -241,7 +241,7 @@ describe('Idempotency Utilities', () => {
       
       // Second request with different content but same key
       const request2 = { name: 'request2' };
-      const hash2 = generateRequestHash(request2);
+      const _hash2 = generateRequestHash(request2);
       
       // Should retrieve first response (idempotency key takes precedence)
       const retrieved = checkIdempotencyKey(key);
@@ -258,7 +258,7 @@ describe('Idempotency Utilities', () => {
       const requestHash = 'test-hash';
       
       // Store with invalid JSON (circular reference)
-      const circularObj: any = {};
+      const circularObj: Record<string, unknown> = {};
       circularObj.self = circularObj;
       
       expect(() => {

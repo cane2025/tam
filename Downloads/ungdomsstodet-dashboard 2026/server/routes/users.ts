@@ -7,7 +7,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { safeQuery, safeQueryOne, safeExecute } from '../database/connection.js';
 import { nowInStockholm } from '../utils/timezone.js';
-import type { User, CreateUserRequest, ApiResponse, PaginatedResponse, JwtPayload } from '../types/database.js';
+import type { User, PaginatedResponse, JwtPayload } from '../types/database.js';
 
 const router = Router();
 
@@ -35,16 +35,16 @@ router.get('/', async (req, res) => {
       FROM users
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     if (role) {
       query += ` AND role = ?`;
-      params.push(role);
+      params.push(String(role));
     }
     
     if (search) {
       query += ` AND (name LIKE ? OR email LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`);
+      params.push(`%${String(search)}%`, `%${String(search)}%`);
     }
     
     query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
@@ -58,16 +58,16 @@ router.get('/', async (req, res) => {
       FROM users
       WHERE 1=1
     `;
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (role) {
       countQuery += ` AND role = ?`;
-      countParams.push(role);
+      countParams.push(String(role));
     }
     
     if (search) {
       countQuery += ` AND (name LIKE ? OR email LIKE ?)`;
-      countParams.push(`%${search}%`, `%${search}%`);
+      countParams.push(`%${String(search)}%`, `%${String(search)}%`);
     }
     
     const totalResult = safeQueryOne<{ total: number }>(countQuery, countParams);
@@ -225,7 +225,7 @@ router.put('/:id', async (req, res) => {
     
     // Build update query
     const updates: string[] = [];
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     if (name !== undefined) {
       updates.push('name = ?');

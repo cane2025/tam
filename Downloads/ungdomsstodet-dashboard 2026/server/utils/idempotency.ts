@@ -3,10 +3,11 @@
  * Ensures safe API operations with idempotency keys
  */
 
-import { createHash, randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase, safeQueryOne, safeExecute } from '../database/connection.js';
 import type { IdempotencyKey } from '../types/database.js';
+import type { Request, Response, NextFunction } from 'express';
 
 const IDEMPOTENCY_KEY_EXPIRY_HOURS = 24;
 
@@ -20,7 +21,7 @@ export function generateIdempotencyKey(): string {
 /**
  * Generate request hash for idempotency
  */
-export function generateRequestHash(requestBody: any, userId?: string): string {
+export function generateRequestHash(requestBody: Record<string, unknown>, userId?: string): string {
   const data = {
     body: requestBody,
     userId: userId || 'anonymous',
@@ -51,7 +52,7 @@ export function storeIdempotencyKey(
   key: string,
   operation: string,
   requestHash: string,
-  response: any
+  response: Record<string, unknown>
 ): void {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + IDEMPOTENCY_KEY_EXPIRY_HOURS);
@@ -99,7 +100,7 @@ export function storePendingIdempotencyKey(
 /**
  * Complete idempotency key with response
  */
-export function completeIdempotencyKey(key: string, response: any): void {
+export function completeIdempotencyKey(key: string, response: Record<string, unknown>): void {
   const query = `
     UPDATE idempotency_keys 
     SET response = ?
@@ -128,7 +129,7 @@ export function cleanupExpiredIdempotencyKeys(): void {
  * Middleware for Express to handle idempotency
  */
 export function idempotencyMiddleware() {
-  return (req: any, res: any, next: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers['idempotency-key'] as string;
     
     if (!idempotencyKey) {
@@ -136,7 +137,7 @@ export function idempotencyMiddleware() {
     }
     
     // Generate request hash
-    const requestHash = generateRequestHash(req.body, req.user?.id);
+    const requestHash = generateRequestHash(req.body, (req.user as { userId?: string })?.userId);
     
     // Check if key exists
     const existing = checkIdempotencyKey(idempotencyKey);
@@ -169,8 +170,8 @@ export function idempotencyMiddleware() {
     
     // Override res.json to cache the response
     const originalJson = res.json.bind(res);
-    res.json = function(data: any) {
-      completeIdempotencyKey(idempotencyKey, data);
+    res.json = function(data: unknown) {
+      completeIdempotencyKey(idempotencyKey, data as Record<string, unknown>);
       return originalJson(data);
     };
     
@@ -181,7 +182,7 @@ export function idempotencyMiddleware() {
 /**
  * Generate idempotency key from request
  */
-export function generateKeyFromRequest(req: any): string {
+export function generateKeyFromRequest(req: Request): string {
   const { method, path, body, user } = req;
   
   // Create a deterministic key based on request content
@@ -189,7 +190,7 @@ export function generateKeyFromRequest(req: any): string {
     method,
     path,
     body,
-    userId: user?.id
+    userId: (user as { userId?: string })?.userId
   };
   
   const hash = createHash('sha256')

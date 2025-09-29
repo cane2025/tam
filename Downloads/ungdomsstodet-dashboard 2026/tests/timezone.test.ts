@@ -3,7 +3,7 @@
  * Tests for Europe/Stockholm timezone handling
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { 
   nowInStockholm,
   formatInStockholm,

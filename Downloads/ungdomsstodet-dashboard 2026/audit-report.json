@@ -1,0 +1,76 @@
+{
+  "timestamp": "2025-09-29T13:35:19.427Z",
+  "totalScore": 80,
+  "results": {
+    "security": {
+      "score": 100,
+      "criticalIssues": [],
+      "warnings": [],
+      "passed": [
+        "Helmet security headers configured",
+        "No hardcoded secrets detected",
+        "GDPR: Audit logs are anonymized",
+        "Authentication properly implemented",
+        "Migration has transaction safety"
+      ],
+      "notes": []
+    },
+    "performance": {
+      "score": 100,
+      "criticalIssues": [],
+      "warnings": [],
+      "passed": [
+        "Bundle size optimal: 0.24MB",
+        "No N+1 query patterns detected",
+        "36% components optimized"
+      ],
+      "notes": []
+    },
+    "codeQuality": {
+      "score": 60,
+      "criticalIssues": [],
+      "warnings": [
+        "ESLint: 15 errors"
+      ],
+      "passed": [
+        "TypeScript strict mode enabled",
+        "No \"any\" types found"
+      ],
+      "notes": [
+        "No test coverage data available"
+      ]
+    },
+    "dataIntegrity": {
+      "score": 80,
+      "criticalIssues": [],
+      "warnings": [],
+      "passed": [
+        "LocalStorage cleanup implemented"
+      ],
+      "notes": []
+    },
+    "errorHandling": {
+      "score": 80,
+      "criticalIssues": [],
+      "warnings": [],
+      "passed": [
+        "Good error handling: 181% async functions protected"
+      ],
+      "notes": []
+    },
+    "deployment": {
+      "score": 30,
+      "criticalIssues": [],
+      "warnings": [],
+      "passed": [
+        "Build successful"
+      ],
+      "notes": []
+    }
+  },
+  "criticalIssues": [],
+  "warnings": [
+    "ESLint: 15 errors"
+  ],
+  "productionReady": true
+}
