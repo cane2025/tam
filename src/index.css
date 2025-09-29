@@ -1,0 +1,157 @@
+/* Reset och layout-hjälp */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f5f7fb;
+  color: #111827;
+}
+
+/* PRINT NEW: Print-specifika regler för Personal Dashboard */
+@media print {
+  /* Dölj alla element som inte ska skrivas ut */
+  aside, /* Sidomeny */
+  [data-print-hide], /* Element markerade för att döljas */
+  button:not([data-print-keep]), /* Alla knappar utom de som ska behållas */
+  input:not([data-print-keep]),
+  select:not([data-print-keep]),
+  textarea:not([data-print-keep]),
+  .save-bar, /* SaveBar komponent */
+  .sticky-element {
+    display: none !important;
+  }
+
+  /* Säkerställ att färger skrivs ut korrekt */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* A4 sidinställningar */
+  @page {
+    size: A4 portrait;
+    margin: 16mm 12mm 16mm 12mm;
+  }
+
+  /* Huvudcontainer för print */
+  body {
+    background: white !important;
+    color: #111111 !important;
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+
+  /* Personal Dashboard specifika regler */
+  [data-print-scope="personal-dashboard"] {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* KPI-kort i print */
+  [data-print-scope="personal-dashboard"] .kpi-card,
+  [data-print-scope="personal-dashboard"] > div > div {
+    background: white !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 12pt !important;
+    padding: 12pt !important;
+  }
+
+  /* Grafer och diagram */
+  [data-print-scope="personal-dashboard"] svg,
+  [data-print-scope="personal-dashboard"] .chart-container {
+    page-break-inside: avoid !important;
+    max-width: 100% !important;
+  }
+
+  /* Print-specifika rubriker (dolda i skärmläge) */
+  .print-only {
+    display: block !important;
+  }
+
+  .screen-only {
+    display: none !important;
+  }
+
+  /* Förbättra kontrast för print */
+  [data-print-scope="personal-dashboard"] h1,
+  [data-print-scope="personal-dashboard"] h2,
+  [data-print-scope="personal-dashboard"] h3 {
+    color: #111111 !important;
+    font-weight: 700 !important;
+  }
+
+  /* KPI-färger ska behållas i print */
+  [data-print-scope="personal-dashboard"] .kpi-late {
+    background: rgba(255, 59, 48, 0.06) !important;
+    border-left: 4px solid #ff3b30 !important;
+  }
+
+  [data-print-scope="personal-dashboard"] .kpi-waiting {
+    background: rgba(255, 149, 0, 0.06) !important;
+    border-left: 4px solid #ff9500 !important;
+  }
+
+  [data-print-scope="personal-dashboard"] .kpi-info {
+    background: rgba(0, 122, 255, 0.06) !important;
+    border-left: 4px solid #007aff !important;
+  }
+
+  [data-print-scope="personal-dashboard"] .kpi-success {
+    background: rgba(22, 163, 74, 0.06) !important;
+    border-left: 4px solid #16a34a !important;
+  }
+
+  [data-print-scope="personal-dashboard"] .kpi-neutral {
+    background: rgba(107, 114, 128, 0.06) !important;
+    border-left: 4px solid #6b7280 !important;
+  }
+
+  /* Grid-layout för print */
+  [data-print-scope="personal-dashboard"] .kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 12pt !important;
+    margin-bottom: 16pt !important;
+  }
+
+  [data-print-scope="personal-dashboard"] .chart-grid {
+    display: grid !important;
+    grid-template-columns: 2fr 1fr !important;
+    gap: 16pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Fotnot för print */
+  .print-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    text-align: center !important;
+    font-size: 10pt !important;
+    color: #6b7280 !important;
+    border-top: 1px solid #e5e7eb !important;
+    padding: 8pt !important;
+    background: white !important;
+  }
+}
+
+/* Dölj print-specifika element i skärmläge */
+.print-only {
+  display: none;
+}
+
+/* Visa skärm-specifika element */
+.screen-only {
+  display: block;
+}

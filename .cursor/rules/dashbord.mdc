@@ -1,0 +1,169 @@
+---
+alwaysApply: true
+---
+
+# Projektregler (repo + agent)
+
+> **Syfte:** Säkerställa konsekvent kod, snabb iterering med Cursor‑agent, och stabil UX för öppenvård. Gäller hela Vite + React + TypeScript‑projektet.
+
+---
+
+## 1) Arkitektur & ramverk
+
+* **React + TypeScript (strict)**. Ingen extern UI‑ram (ingen Tailwind, MUI, CSS‑modules).
+* **Endast inline‑styles i TSX.** En liten `index.css` får ha reset/layout‑hjälp.
+* **Komponenter** ska vara små, rena och återanvändbara (t.ex. `KpiCard`).
+* **Hooks:** endast `useState`, `useEffect`, `useMemo` (ytterligare hooks bara om motiverat).
+
+---
+
+## 2) Data, typer & invariants
+
+* **Typer som inte får brytas:**
+
+  * `type DocStatus = 'approved' | 'pending' | 'rejected'`
+  * `Staff`, `Client`, `Plan`, `WeeklyDoc`, `MonthlyReport`, `VismaWeek`, `AppState`, `View`.
+* **IDs:** `crypto.randomUUID()`.
+* **Datumformat:**
+
+  * `getCurrentWeek()` → **ISO‑8601** `YYYY-Wxx`.
+  * `getCurrentMonth()` → `YYYY-MM`.
+  * Hjälpare får inte ändras i signatur eller output.
+
+---
+
+## 3) Lagring & backup
+
+* **LocalStorage med try/catch** och fallback till **in‑memory** store.
+* Nycklar: `LS_KEY = 'ungdomsstodet_app_state_v3'`, backup‑prefix `ungdomsstodet_backup_YYYY-MM-DD`.
+* **Behåll 7 senaste** backups. Export/Import ska fungera (fil + clipboard base64).
+
+---
+
+## 4) UI/UX
+
+* **Språk:** Svenska i all UI‑text.
+* **Minsta bredd:** 280px. Layout måste vara responsiv (grids med `minmax`).
+* **Kontrast:** text **#111111**, sekundär **#374151**. Sätt **explicit** `background: '#fff'` och `color: '#111'` på inputs/select/textarea/kort.
+* **KPI‑färger:** röd `#ff3b30` (försenat), orange `#ff9500` (väntar), blå `#007aff` (standard/info), grön `#16a34a` (success), neutral `#6b7280`.
+* **Ikoner:** inline **SVG** (20×20), `aria-hidden="true"`.
+* **Formkontroller:** använd gemensamma tokens: `inputBase`, `inputSmall`, `selectBase`, `textareaBase` (vit bakgrund + mörk text). Inga system‑default färger.
+* **Menyknapp “Klient”** ska vara disabled (visuellt och logiskt) tills en klient är vald.
+
+---
+
+## 5) Tillgänglighet
+
+* Färg är aldrig ensam bärare av info (ha rubriker/etiketter).
+* Inputs har `aria-label` där text inte framgår.
+* Tab‑ordning ska fungera, klickytor ≥ 40px höjd.
+
+---
+
+## 6) Prestanda & kvalitet
+
+* Härleda KPI och list‑summeringar med **`useMemo`**.
+* Undvik att skapa nya objekt/funktioner i render i onödan.
+* Stabil `key` i listor (använd id).
+* Ingen nätverkskod i denna app (allt lokalt) – mocka vid behov.
+
+---
+
+## 7) Felhantering
+
+* All `localStorage` i try/catch, logga varning – fortsätt med minnes‑store.
+* Säkra datuminmatning: tolerera tomt värde och ogiltiga strängar.
+* Guard: om `view === 'client'` och **ingen** `selectedClientId` → växla till `staff`.
+
+---
+
+## 8) Navigering & vyer
+
+* Vyer: `overview`, `staff`, `client`, `reports`, `settings`.
+* Sidomeny highlightas med `sidebarActive` (#e9f2ff) och blå text.
+
+---
+
+## 9) Git/PR‑disciplin
+
+* **Små, rena commits**. En sak per commit.
+* Branchnamn: `feat/*`, `fix/*`, `refactor/*`.
+* PR‑mall/checklista:
+
+  * [ ] Följer inline‑styles, inga externa UI‑libs
+  * [ ] Strikt TS, inga `any`/`// @ts-ignore` utan kommentar
+  * [ ] `getCurrentWeek()/Month()` orörda (eller uppdaterade med tester)
+  * [ ] LocalStorage + fallback testat
+  * [ ] Min‑bredd 280px OK
+  * [ ] KPI‑färger enligt spec
+  * [ ] Kontrast AA och inputs vita i Safari dark mode
+
+---
+
+## 10) Cursor‑agent regler (.cursorrules)
+
+* Använd alltid **TypeScript strict**.
+* **Auto‑save** på.
+* **Testa i StackBlitz** (eller `npm run dev`) före commit.
+* **Ingen extern UI‑ram eller komponentbibliotek.**
+* Endast **inline‑styles** i TSX (ingen CSS‑modul, ingen Tailwind).
+* Bevara hjälpare: **`getCurrentWeek`, `getCurrentMonth`**.
+* LocalStorage med try/catch + **fallback** får ej tas bort.
+* UI‑texter på svenska.
+* Minsta bredd 280px ska fungera.
+* KPI‑färger enligt ovan.
+* Vid refaktor: **behåll typerna** (DocStatus, Staff, Client, Plan, WeeklyDoc, MonthlyReport, VismaWeek, AppState, View). Om schema ändras → migrera state och bumpa `version`.
+
+---
+
+## 11) Definition of Done (per uppgift)
+
+* AC uppfyllda, responsiv i 320–1200 px.
+* Inputs/knappar läsbara i Safari (dark mode aktivt).
+* Ingen ESLint/TS‑error. `npm run build` OK.
+* Data kvar efter reload. Export/clipboard funkar.
+
+---
+
+## 12) Agent‑prompt mall (exempel)
+
+**Uppgift:** “Inför en `Login.tsx` med email/lösen (dummy). På lyckad login → spara `authUser` i localStorage, visa `overview`. Lägg `Logga ut` som röd knapp uppe till höger som rensar `authUser` och returnerar till `Login`.”
+
+**Krav:**
+
+* Endast inline‑styles. Strikt TS. Svenska texter. Testad med dark mode.
+* Återanvänd `inputBase`, `selectBase`, `textareaBase`.
+* Ingen påverkan på `getCurrentWeek/Month`.
+* Guard: om ej inloggad → redirect till `Login`.
+
+**Leverans:**
+
+* Patched `src/App.tsx` + ny `src/Login.tsx` som kodblock.
+* Kort not om var logiken kopplas in.
+
+---
+
+## 13) Färg- och stil‑tokens (rekommenderat)
+
+* Primär blå: `#007aff`
+* Orange: `#ff9500`
+* Röd: `#ff3b30`
+* Grön: `#16a34a`
+* Text primär: `#111111`
+* Text sekundär: `#374151`
+* Border: `rgba(0,0,0,0.12)`
+* Sidebar active: `#e9f2ff`
+
+---
+
+## 14) QA‑check innan merge
+
+* [ ] Smal mobil (iPhone SE) → ingen horisontell scroll
+* [ ] Kontrast testad i macOS dark mode (Safari)
+* [ ] Alla inputs har vit bakgrund
+* [ ] KPI‑kort visar rätt siffror vid dummy‑data
+* [ ] Klientvy öppnas endast när klient är vald
+
+---
+
+**Klar att kopieras in som** `.cursorrules` **eller README‑sektion.**
